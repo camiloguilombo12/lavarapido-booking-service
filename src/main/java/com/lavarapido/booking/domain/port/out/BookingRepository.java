@@ -2,22 +2,38 @@ package com.lavarapido.booking.domain.port.out;
 
 import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BookingStatus;
+import com.lavarapido.booking.domain.model.CancellationReason;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-// puerto para guardar y consultar reservas
+/** Reservas y sus lineas (esquema booking). */
 public interface BookingRepository {
 
-    Booking save(Booking booking);
+    /**
+     * Bloquea la agenda hasta que termine la transaccion. Dos clientes que piden la misma hora al
+     * tiempo se atienden uno detras del otro, asi no se asigna la misma bahia dos veces.
+     */
+    void lockSchedule();
 
-    Optional<Booking> findById(Long bookingId);
+    /** Reservas que ocupan bahia (SCHEDULED, CONFIRMED, IN_PROGRESS) y se cruzan con [from, to). */
+    List<Booking> findOccupying(Instant from, Instant to);
 
-    Optional<Booking> findByCode(String bookingCode);
+    Booking save(Booking booking, long actor);
 
-    List<Booking> findByCustomerId(Long customerId);
+    Optional<Booking> findById(long bookingId);
 
-    List<Booking> findByStatus(BookingStatus status);
+    /** Reservas de un cliente: las que hizo el mismo o las de sus vehiculos. Mas recientes primero. */
+    List<Booking> findForCustomer(long userId, Collection<Long> vehicleIds);
 
-    boolean existsByCode(String bookingCode);
+    /** Reservas que empiezan en [from, to), opcionalmente de un estado, por hora de inicio. */
+    List<Booking> findStartingBetween(Instant from, Instant to, BookingStatus status);
+
+    boolean hasUpcomingOnBay(short bayId, Instant from);
+
+    List<CancellationReason> findCancellationReasons();
+
+    Optional<CancellationReason> findCancellationReason(String code);
 }

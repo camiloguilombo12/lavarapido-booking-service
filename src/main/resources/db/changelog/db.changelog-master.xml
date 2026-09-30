@@ -1,10 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<databaseChangeLog
-    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+<!--
+  Changelog del booking-service: solo los esquemas `catalog` y `booking` (ADR-009).
+  Los archivos corren en el orden de esta lista, no alfabéticamente (06-data/migration-strategy.md).
+  Cada changeset tiene una precondición, así se marca como ejecutado en vez de fallar cuando el
+  script completo lavarapido-6-services-sqlserver.sql ya creó el objeto.
 
-    <include file="db.changelog-booking.xml" relativeToChangelogFile="true"/>
+  Numeración global del proyecto (migration-strategy.md), no reiniciada por servicio:
+    005  esquemas y tablas del booking-service (+ triggers)
+    018  cambios de ADR-010: estado de bahía y pausa del día
+    103  seed del catálogo (categorías, servicios y precios por tipo de vehículo)
+    104  seed de estados de reserva y motivos de cancelación
+    109  seed del negocio, horario semanal y bahías
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <include file="db/changelog/005-create-booking-schemas.sql"/>
+    <include file="db/changelog/018-booking-adr-010.sql"/>
+    <include file="db/changelog/seed/103-seed-catalog.sql"/>
+    <include file="db/changelog/seed/104-seed-booking-catalogs.sql"/>
+    <include file="db/changelog/seed/109-seed-establishment-schedule.sql"/>
 
 </databaseChangeLog>

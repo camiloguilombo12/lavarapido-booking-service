@@ -1,86 +1,208 @@
 package com.lavarapido.booking.infrastructure.adapter.out.persistence.entity;
 
-import jakarta.persistence.*;
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
-// entidad JPA para la tabla booking
+import java.math.BigDecimal;
+import java.time.Instant;
+
+/**
+ * La fila de booking.booking. Sin total a proposito: se calcula con sus lineas.
+ *
+ * updated_at y row_version los pone el trigger de la tabla, nunca esta clase.
+ */
 @Entity
-@Table(name = "booking", schema = "booking")
+@Table(schema = "booking", name = "booking")
 public class BookingJpaEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "booking_id")
-    private Long bookingId;
+    private Long id;
 
-    @Column(name = "booking_code", nullable = false, unique = true)
-    private String bookingCode;
+    @Column(name = "customer_vehicle_id", updatable = false)
+    private Long customerVehicleId;
 
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
+    @Column(name = "service_bay_id")
+    private Short serviceBayId;
 
-    @Column(name = "vehicle_id", nullable = false)
-    private Long vehicleId;
+    @Column(name = "scheduled_start")
+    private Instant scheduledStart;
 
-    @Column(name = "service_offering_id", nullable = false)
-    private Long serviceOfferingId;
+    @Column(name = "scheduled_end")
+    private Instant scheduledEnd;
 
-    @Column(name = "location_id", nullable = false)
-    private Long locationId;
+    @Column(name = "booking_status_id")
+    private Short statusId;
 
-    @Column(name = "booking_date", nullable = false)
-    private LocalDate bookingDate;
+    @Column(name = "booked_by", updatable = false)
+    private Long bookedBy;
 
-    @Column(name = "booking_time", nullable = false)
-    private LocalTime bookingTime;
+    @Column(name = "cancellation_reason_id")
+    private Short cancellationReasonId;
 
-    @Column(name = "status", nullable = false)
-    private String status;
+    @Column(name = "points_redeemed")
+    private Integer pointsRedeemed;
 
-    @Column(name = "total_amount", nullable = false)
-    private BigDecimal totalAmount;
+    @Column(name = "points_discount_amount")
+    private BigDecimal pointsDiscountAmount;
 
-    @Column(name = "notes")
+    @Column(name = "notes", length = 300)
     private String notes;
 
-    @Column(name = "created_at")
-    private java.time.LocalDateTime createdAt;
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private Instant createdAt;
 
-    @Column(name = "updated_at")
-    private java.time.LocalDateTime updatedAt;
+    @Column(name = "created_by", updatable = false)
+    private Long createdBy;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private Instant updatedAt;
+
+    @Column(name = "updated_by")
+    private Long updatedBy;
 
     @Column(name = "deleted_at")
-    private java.time.LocalDateTime deletedAt;
+    private Instant deletedAt;
 
-    // getters y setters
-    public Long getBookingId() { return bookingId; }
-    public void setBookingId(Long bookingId) { this.bookingId = bookingId; }
-    public String getBookingCode() { return bookingCode; }
-    public void setBookingCode(String bookingCode) { this.bookingCode = bookingCode; }
-    public Long getCustomerId() { return customerId; }
-    public void setCustomerId(Long customerId) { this.customerId = customerId; }
-    public Long getVehicleId() { return vehicleId; }
-    public void setVehicleId(Long vehicleId) { this.vehicleId = vehicleId; }
-    public Long getServiceOfferingId() { return serviceOfferingId; }
-    public void setServiceOfferingId(Long serviceOfferingId) { this.serviceOfferingId = serviceOfferingId; }
-    public Long getLocationId() { return locationId; }
-    public void setLocationId(Long locationId) { this.locationId = locationId; }
-    public LocalDate getBookingDate() { return bookingDate; }
-    public void setBookingDate(LocalDate bookingDate) { this.bookingDate = bookingDate; }
-    public LocalTime getBookingTime() { return bookingTime; }
-    public void setBookingTime(LocalTime bookingTime) { this.bookingTime = bookingTime; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public BigDecimal getTotalAmount() { return totalAmount; }
-    public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
-    public java.time.LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(java.time.LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public java.time.LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(java.time.LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
-    public java.time.LocalDateTime getDeletedAt() { return deletedAt; }
-    public void setDeletedAt(java.time.LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+    @Column(name = "deleted_by")
+    private Long deletedBy;
+
+    @Column(name = "row_version", insertable = false, updatable = false)
+    private Integer rowVersion;
+
+    public BookingJpaEntity() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Long getCustomerVehicleId() {
+        return customerVehicleId;
+    }
+
+    public void setCustomerVehicleId(Long customerVehicleId) {
+        this.customerVehicleId = customerVehicleId;
+    }
+
+    public Short getServiceBayId() {
+        return serviceBayId;
+    }
+
+    public void setServiceBayId(Short serviceBayId) {
+        this.serviceBayId = serviceBayId;
+    }
+
+    public Instant getScheduledStart() {
+        return scheduledStart;
+    }
+
+    public void setScheduledStart(Instant scheduledStart) {
+        this.scheduledStart = scheduledStart;
+    }
+
+    public Instant getScheduledEnd() {
+        return scheduledEnd;
+    }
+
+    public void setScheduledEnd(Instant scheduledEnd) {
+        this.scheduledEnd = scheduledEnd;
+    }
+
+    public Short getStatusId() {
+        return statusId;
+    }
+
+    public void setStatusId(Short statusId) {
+        this.statusId = statusId;
+    }
+
+    public Long getBookedBy() {
+        return bookedBy;
+    }
+
+    public void setBookedBy(Long bookedBy) {
+        this.bookedBy = bookedBy;
+    }
+
+    public Short getCancellationReasonId() {
+        return cancellationReasonId;
+    }
+
+    public void setCancellationReasonId(Short cancellationReasonId) {
+        this.cancellationReasonId = cancellationReasonId;
+    }
+
+    public Integer getPointsRedeemed() {
+        return pointsRedeemed;
+    }
+
+    public void setPointsRedeemed(Integer pointsRedeemed) {
+        this.pointsRedeemed = pointsRedeemed;
+    }
+
+    public BigDecimal getPointsDiscountAmount() {
+        return pointsDiscountAmount;
+    }
+
+    public void setPointsDiscountAmount(BigDecimal pointsDiscountAmount) {
+        this.pointsDiscountAmount = pointsDiscountAmount;
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Long getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(Long createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public Long getUpdatedBy() {
+        return updatedBy;
+    }
+
+    public void setUpdatedBy(Long updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    public Long getDeletedBy() {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(Long deletedBy) {
+        this.deletedBy = deletedBy;
+    }
+
+    public Integer getRowVersion() {
+        return rowVersion;
+    }
 }
