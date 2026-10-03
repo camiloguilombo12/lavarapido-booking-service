@@ -3,8 +3,10 @@ package com.lavarapido.booking.infrastructure.adapter.out.customer;
 import com.lavarapido.booking.domain.exception.DependencyUnavailableException;
 import com.lavarapido.booking.domain.model.VehicleSnapshot;
 import com.lavarapido.booking.domain.port.out.CustomerDirectory;
+import com.lavarapido.booking.infrastructure.config.CorrelationIdFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,8 +30,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Habla con customer-service por REST (ADR-004) reenviando el token de quien llama. Asi customer
- * aplica sus propias reglas: un cliente solo ve sus vehiculos y /admin/vehicles exige ADMIN.
+ * Habla con customer-service por REST (ADR-004) reenviando el token de quien llama y el
+ * X-Correlation-Id (cross-cutting.md §4). Asi customer aplica sus propias reglas: un cliente
+ * solo ve sus vehiculos y /admin/vehicles exige ADMIN.
  *
  * Si customer no responde, la operacion falla con 503 (CUSTOMER_SERVICE_UNAVAILABLE): no se
  * reserva nada sin validar que el vehiculo es del cliente (INV-BOOK-002).
@@ -61,6 +64,7 @@ class CustomerServiceDirectory implements CustomerDirectory {
             VehicleDto vehicle = client.get()
                     .uri("/vehicles/{id}", vehicleId)
                     .header(HttpHeaders.AUTHORIZATION, bearer())
+                    .headers(headers -> trace(headers))
                     .retrieve()
                     .body(VehicleDto.class);
             return Optional.ofNullable(vehicle).map(dto -> dto.toSnapshot(null));
@@ -80,6 +84,7 @@ class CustomerServiceDirectory implements CustomerDirectory {
             VehicleDto[] vehicles = client.get()
                     .uri("/vehicles")
                     .header(HttpHeaders.AUTHORIZATION, bearer())
+                    .headers(headers -> trace(headers))
                     .retrieve()
                     .body(VehicleDto[].class);
             List<VehicleSnapshot> result = new ArrayList<>();
@@ -105,6 +110,7 @@ class CustomerServiceDirectory implements CustomerDirectory {
                 OwnedVehicleDto[] found = client.get()
                         .uri(uri -> uri.path("/admin/vehicles").queryParam("ids", joined).build())
                         .header(HttpHeaders.AUTHORIZATION, bearer())
+                        .headers(headers -> trace(headers))
                         .retrieve()
                         .body(OwnedVehicleDto[].class);
                 if (found != null) {
@@ -117,6 +123,14 @@ class CustomerServiceDirectory implements CustomerDirectory {
             }
         }
         return result;
+    }
+
+    /** cross-cutting.md §4: la llamada al vecino lleva el mismo X-Correlation-Id de la peticion. */
+    private static void trace(HttpHeaders headers) {
+        String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
+        if (correlationId != null && !correlationId.isBlank()) {
+            headers.add(CorrelationIdFilter.HEADER, correlationId);
+        }
     }
 
     private static String bearer() {

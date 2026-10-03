@@ -20,10 +20,10 @@ import java.util.regex.Pattern;
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-class CorrelationIdFilter extends OncePerRequestFilter {
+public class CorrelationIdFilter extends OncePerRequestFilter {
 
-    static final String HEADER = "X-Correlation-Id";
-    static final String MDC_KEY = "correlationId";
+    public static final String HEADER = "X-Correlation-Id";
+    public static final String MDC_KEY = "correlationId";
 
     /** Solo acepta ids sin riesgo, porque cualquier otra cosa podria meter lineas falsas en el log. */
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9-]{1,64}$");
