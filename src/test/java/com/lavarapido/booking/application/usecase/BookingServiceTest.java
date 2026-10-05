@@ -214,4 +214,33 @@ class BookingServiceTest {
         assertEquals(7L, views.getFirst().vehicle().ownerUserId());
         assertThrows(NotFoundException.class, () -> service.list(TOMORROW, TOMORROW, null, CLIENT));
     }
+
+    @Test
+    @DisplayName("TEMPORAL: el operario ve las reservas del dia sin las canceladas")
+    void operatorSeesTheDay() {
+        Booking cancelled = existing(2L, 5L, "2026-10-01T16:00:00Z");
+        cancelled.cancel(new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false));
+        given(bookings.findStartingBetween(any(), any(), any()))
+                .willReturn(List.of(existing(1L, 5L, "2026-10-01T14:00:00Z"), cancelled));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of(5L, new VehicleSnapshot(5L, "ABC123", "ABC-123",
+                "SUV", SUV, "Camioneta SUV", "Mazda", "CX-5", 7L)));
+
+        List<BookingView> views = service.operatorDay(TOMORROW, null, new Caller(30L, false));
+
+        assertEquals(1, views.size());
+        assertEquals(1L, views.getFirst().booking().id());
+    }
+
+    @Test
+    @DisplayName("TEMPORAL: el operario empieza una reserva pero no puede marcar no-show")
+    void operatorOnlyMovesForward() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of());
+
+        BookingView view = service.operatorAdvance(1L, BookingStatus.IN_PROGRESS, new Caller(30L, false));
+
+        assertEquals(BookingStatus.IN_PROGRESS, view.booking().status());
+        assertThrows(InvalidValueException.class,
+                () -> service.operatorAdvance(1L, BookingStatus.NO_SHOW, new Caller(30L, false)));
+    }
 }

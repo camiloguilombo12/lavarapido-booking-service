@@ -30,6 +30,11 @@ final class AuthenticatedUser {
         return new Caller(userId(jwt), false);
     }
 
+    /** Operario (TEMPORAL): el caso de uso decide que puede ver y mover. */
+    static Caller operator(Jwt jwt) {
+        return new Caller(userId(jwt), false);
+    }
+
     static Caller admin(Jwt jwt) {
         return new Caller(userId(jwt), true);
     }

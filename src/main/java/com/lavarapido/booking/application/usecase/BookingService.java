@@ -220,6 +220,32 @@ public class BookingService implements BookingUseCase {
                 .toList();
     }
 
+    // ------------------------------------------------------------------ operario (TEMPORAL)
+    // Mientras no exista operations-service, el operario trabaja sobre las reservas del dia.
+    // El rol OPERATOR ya lo exigio SecurityConfig; aqui se le trata como personal del lavadero
+    // (ve todas las reservas) pero solo puede mover el estado hacia adelante.
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookingView> operatorDay(LocalDate date, LocalDate to, Caller caller) {
+        LocalDate day = date == null ? today() : date;
+        return list(day, to == null ? day : to, null, staff(caller)).stream()
+                .filter(view -> view.booking().status() != BookingStatus.CANCELLED)
+                .toList();
+    }
+
+    @Override
+    public BookingView operatorAdvance(long bookingId, BookingStatus status, Caller caller) {
+        if (status != BookingStatus.IN_PROGRESS && status != BookingStatus.COMPLETED) {
+            throw new InvalidValueException("INVALID_STATUS", "An operator can only start or complete a booking");
+        }
+        return changeStatus(bookingId, status, null, staff(caller));
+    }
+
+    private static Caller staff(Caller caller) {
+        return new Caller(caller.userId(), true);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<CancellationReason> cancellationReasons() {

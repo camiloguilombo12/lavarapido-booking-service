@@ -120,4 +120,17 @@ class BookingApiWebTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
+
+    @Test
+    void operatorRoutesAreForOperatorsAndAdmins() throws Exception {
+        given(bookings.operatorDay(any(), any(), any())).willReturn(List.of());
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/admin/bookings").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isForbidden());
+    }
 }

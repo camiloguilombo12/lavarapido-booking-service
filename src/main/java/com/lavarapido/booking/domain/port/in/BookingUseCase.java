@@ -32,5 +32,15 @@ public interface BookingUseCase {
     /** Solo admin: IN_PROGRESS, COMPLETED, NO_SHOW, CONFIRMED o CANCELLED (con motivo). */
     BookingView changeStatus(long bookingId, BookingStatus status, String reasonCode, Caller caller);
 
+    /**
+     * TEMPORAL hasta que exista operations-service: reservas entre date y to (sin las canceladas)
+     * para el operario. Sin to, solo ese dia. Sin asignacion por operario todavia, ve las de todo
+     * el lavadero.
+     */
+    List<BookingView> operatorDay(LocalDate date, LocalDate to, Caller caller);
+
+    /** TEMPORAL hasta operations-service: el operario solo empieza (IN_PROGRESS) o termina (COMPLETED). */
+    BookingView operatorAdvance(long bookingId, BookingStatus status, Caller caller);
+
     List<CancellationReason> cancellationReasons();
 }

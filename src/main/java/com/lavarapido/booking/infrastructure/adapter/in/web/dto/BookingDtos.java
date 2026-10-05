@@ -88,11 +88,12 @@ public final class BookingDtos {
         }
     }
 
-    public record LineResponse(int serviceId, String code, String name, BigDecimal price, short estimatedMinutes,
-                               short quantity) {
+    /** lineId = booking_service_id (operations-service ejecuta y califica por linea). */
+    public record LineResponse(Long lineId, int serviceId, String code, String name, BigDecimal price,
+                               short estimatedMinutes, short quantity) {
 
         static LineResponse from(BookingLine line) {
-            return new LineResponse(line.serviceId(), line.serviceCode(), line.serviceName(), line.price(),
+            return new LineResponse(line.lineId(), line.serviceId(), line.serviceCode(), line.serviceName(), line.price(),
                     line.estimatedMinutes(), line.quantity());
         }
     }
