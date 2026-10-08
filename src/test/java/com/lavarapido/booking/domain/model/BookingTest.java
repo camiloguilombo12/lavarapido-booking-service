@@ -21,9 +21,9 @@ class BookingTest {
     private static final Instant START = Instant.parse("2026-10-01T14:00:00Z");
     private static final Instant END = Instant.parse("2026-10-01T15:15:00Z");
     private static final BookingLine PREMIUM =
-            new BookingLine(10L, 2, "PREMIUM", "Premium", new BigDecimal("35000"), (short) 75, (short) 1);
+            new BookingLine(10L, 2, "PREMIUM", "Premium", new BigDecimal("35000"), (short) 75, (short) 1, 30);
     private static final BookingLine BASIC =
-            new BookingLine(11L, 1, "BASIC", "Basico", new BigDecimal("20000"), (short) 45, (short) 1);
+            new BookingLine(11L, 1, "BASIC", "Basico", new BigDecimal("20000"), (short) 45, (short) 1, 10);
     private static final CancellationReason CUSTOMER =
             new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false);
 
