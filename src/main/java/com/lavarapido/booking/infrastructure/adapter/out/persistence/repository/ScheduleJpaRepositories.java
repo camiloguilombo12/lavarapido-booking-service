@@ -3,6 +3,8 @@ package com.lavarapido.booking.infrastructure.adapter.out.persistence.repository
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourExceptionJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.EstablishmentJpaEntity;
+import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.ScheduleHistoryJpaEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
@@ -39,5 +41,10 @@ public final class ScheduleJpaRepositories {
     public interface Establishments extends JpaRepository<EstablishmentJpaEntity, Short> {
 
         Optional<EstablishmentJpaEntity> findFirstByDeletedAtIsNull();
+    }
+
+    public interface Histories extends JpaRepository<ScheduleHistoryJpaEntity, Long> {
+
+        List<ScheduleHistoryJpaEntity> findByOrderByChangedAtDesc(Pageable page);
     }
 }

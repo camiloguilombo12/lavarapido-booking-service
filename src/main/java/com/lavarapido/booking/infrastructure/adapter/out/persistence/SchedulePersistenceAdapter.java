@@ -3,10 +3,14 @@ package com.lavarapido.booking.infrastructure.adapter.out.persistence;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.ScheduleEntityType;
+import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 import com.lavarapido.booking.domain.port.out.ScheduleRepository;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourExceptionJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourJpaEntity;
+import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.ScheduleHistoryJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.repository.ScheduleJpaRepositories;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -21,13 +25,16 @@ class SchedulePersistenceAdapter implements ScheduleRepository {
     private final ScheduleJpaRepositories.BusinessHours hours;
     private final ScheduleJpaRepositories.HourExceptions exceptions;
     private final ScheduleJpaRepositories.Establishments establishments;
+    private final ScheduleJpaRepositories.Histories histories;
 
     SchedulePersistenceAdapter(ScheduleJpaRepositories.BusinessHours hours,
                                ScheduleJpaRepositories.HourExceptions exceptions,
-                               ScheduleJpaRepositories.Establishments establishments) {
+                               ScheduleJpaRepositories.Establishments establishments,
+                               ScheduleJpaRepositories.Histories histories) {
         this.hours = hours;
         this.exceptions = exceptions;
         this.establishments = establishments;
+        this.histories = histories;
     }
 
     @Override
@@ -129,5 +136,23 @@ class SchedulePersistenceAdapter implements ScheduleRepository {
     private static HoursException toException(BusinessHourExceptionJpaEntity entity) {
         return new HoursException(entity.getId(), entity.getExceptionDate(), Boolean.TRUE.equals(entity.getClosed()),
                 entity.getOpensAt(), entity.getClosesAt(), entity.getReason());
+    }
+
+    @Override
+    public List<ScheduleHistoryEntry> findHistory(int limit) {
+        return histories.findByOrderByChangedAtDesc(PageRequest.of(0, limit)).stream()
+                .map(entity -> new ScheduleHistoryEntry(entity.getId(), ScheduleEntityType.valueOf(entity.getEntityType()),
+                        entity.getTitle(), entity.getDetail(), entity.getChangedAt(), entity.getChangedBy()))
+                .toList();
+    }
+
+    @Override
+    public void recordHistory(ScheduleEntityType entityType, String title, String detail, long actor) {
+        ScheduleHistoryJpaEntity entity = new ScheduleHistoryJpaEntity();
+        entity.setEntityType(entityType.name());
+        entity.setTitle(title);
+        entity.setDetail(detail);
+        entity.setChangedBy(actor);
+        histories.save(entity);
     }
 }

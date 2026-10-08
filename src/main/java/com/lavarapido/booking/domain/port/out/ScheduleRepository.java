@@ -3,6 +3,8 @@ package com.lavarapido.booking.domain.port.out;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.ScheduleEntityType;
+import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,4 +31,9 @@ public interface ScheduleRepository {
     void deleteException(int exceptionId, long actor, Instant now);
 
     Optional<Establishment> findEstablishment();
+
+    /** Mas reciente primero. */
+    List<ScheduleHistoryEntry> findHistory(int limit);
+
+    void recordHistory(ScheduleEntityType entityType, String title, String detail, long actor);
 }
