@@ -75,23 +75,27 @@ class CatalogPersistenceAdapter implements CatalogRepository {
     }
 
     @Override
-    public int insertService(String code, String name, String description, short categoryId, long actor) {
+    public int insertService(String code, String name, String description, short categoryId, int loyaltyPoints,
+                             long actor) {
         ServiceJpaEntity entity = new ServiceJpaEntity();
         entity.setCode(code);
         entity.setName(name);
         entity.setDescription(description);
         entity.setCategoryId(categoryId);
+        entity.setLoyaltyPoints(loyaltyPoints);
         entity.setActive(true);
         entity.setCreatedBy(actor);
         return services.save(entity).getId();
     }
 
     @Override
-    public void updateService(int serviceId, String name, String description, short categoryId, long actor) {
+    public void updateService(int serviceId, String name, String description, short categoryId, int loyaltyPoints,
+                              long actor) {
         ServiceJpaEntity entity = services.findById(serviceId).orElseThrow();
         entity.setName(name);
         entity.setDescription(description);
         entity.setCategoryId(categoryId);
+        entity.setLoyaltyPoints(loyaltyPoints);
         entity.setUpdatedBy(actor);
         services.save(entity);
     }
@@ -181,7 +185,8 @@ class CatalogPersistenceAdapter implements CatalogRepository {
                 .map(entity -> new CatalogItem(entity.getId(), entity.getCode(), entity.getName(),
                         entity.getDescription(), categoryById.get(entity.getCategoryId()),
                         Boolean.TRUE.equals(entity.getActive()),
-                        pricesByService.getOrDefault(entity.getId(), List.of())))
+                        pricesByService.getOrDefault(entity.getId(), List.of()),
+                        entity.getLoyaltyPoints() == null ? 0 : entity.getLoyaltyPoints()))
                 .toList();
     }
 

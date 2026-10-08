@@ -36,12 +36,12 @@ public final class CatalogDtos {
     }
 
     public record ServiceResponse(int id, String code, String name, String description, CategoryResponse category,
-                                  boolean active, List<PriceResponse> prices) {
+                                  boolean active, List<PriceResponse> prices, int loyaltyPoints) {
 
         public static ServiceResponse from(CatalogItem item) {
             return new ServiceResponse(item.id(), item.code(), item.name(), item.description(),
                     CategoryResponse.from(item.category()), item.active(),
-                    item.prices().stream().map(PriceResponse::from).toList());
+                    item.prices().stream().map(PriceResponse::from).toList(), item.loyaltyPoints());
         }
     }
 
@@ -64,12 +64,13 @@ public final class CatalogDtos {
             @NotBlank @Size(max = 100) String name,
             String description,
             @NotNull Short categoryId,
-            @Valid List<PriceRequest> prices) {
+            @Valid List<PriceRequest> prices,
+            int loyaltyPoints) {
 
         public ServiceCommand toCommand() {
             List<PriceDefinition> definitions = prices == null ? List.of()
                     : prices.stream().map(PriceRequest::toDefinition).toList();
-            return new ServiceCommand(code, name, description, categoryId, definitions);
+            return new ServiceCommand(code, name, description, categoryId, definitions, loyaltyPoints);
         }
     }
 

@@ -38,6 +38,9 @@ public class ServiceJpaEntity {
     @Column(name = "is_active")
     private Boolean active;
 
+    @Column(name = "loyalty_points")
+    private Integer loyaltyPoints;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -104,6 +107,14 @@ public class ServiceJpaEntity {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public Integer getLoyaltyPoints() {
+        return loyaltyPoints;
+    }
+
+    public void setLoyaltyPoints(Integer loyaltyPoints) {
+        this.loyaltyPoints = loyaltyPoints;
     }
 
     public Instant getCreatedAt() {

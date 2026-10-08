@@ -54,7 +54,8 @@ public class CatalogService implements CatalogUseCase {
         return items.stream()
                 .filter(item -> item.priceFor(vehicleTypeId).isPresent())
                 .map(item -> new CatalogItem(item.id(), item.code(), item.name(), item.description(),
-                        item.category(), item.active(), List.of(item.priceFor(vehicleTypeId).orElseThrow())))
+                        item.category(), item.active(), List.of(item.priceFor(vehicleTypeId).orElseThrow()),
+                        item.loyaltyPoints()))
                 .toList();
     }
 
@@ -68,9 +69,10 @@ public class CatalogService implements CatalogUseCase {
         }
         requireCategory(command.categoryId());
         List<PriceDefinition> prices = requirePrices(command.prices());
+        int loyaltyPoints = CatalogItem.requireLoyaltyPoints(command.loyaltyPoints());
 
         int serviceId = catalog.insertService(code, name, cleanDescription(command.description()),
-                command.categoryId(), actor);
+                command.categoryId(), loyaltyPoints, actor);
         catalog.replacePrices(serviceId, prices, today(), actor, now());
         return requireService(serviceId);
     }
@@ -80,7 +82,9 @@ public class CatalogService implements CatalogUseCase {
         requireService(serviceId);
         String name = CatalogItem.requireName(command.name());
         requireCategory(command.categoryId());
-        catalog.updateService(serviceId, name, cleanDescription(command.description()), command.categoryId(), actor);
+        int loyaltyPoints = CatalogItem.requireLoyaltyPoints(command.loyaltyPoints());
+        catalog.updateService(serviceId, name, cleanDescription(command.description()), command.categoryId(),
+                loyaltyPoints, actor);
         if (command.prices() != null && !command.prices().isEmpty()) {
             catalog.replacePrices(serviceId, requirePrices(command.prices()), today(), actor, now());
         }
