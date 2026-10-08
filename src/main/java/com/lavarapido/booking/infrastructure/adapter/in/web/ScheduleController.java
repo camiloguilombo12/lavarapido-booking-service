@@ -7,6 +7,7 @@ import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.Bus
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.EstablishmentResponse;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.ExceptionRequest;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.ExceptionResponse;
+import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.HistoryEntryResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
@@ -92,7 +93,8 @@ class ScheduleController {
     @PostMapping("/api/v1/admin/bays")
     @ResponseStatus(HttpStatus.CREATED)
     BayResponse createBay(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody BayRequest request) {
-        return BayResponse.from(schedule.createBay(request.name(), request.statusOrDefault(), AuthenticatedUser.userId(jwt)));
+        return BayResponse.from(schedule.createBay(request.name(), request.statusOrDefault(),
+                AuthenticatedUser.userId(jwt)));
     }
 
     @PutMapping("/api/v1/admin/bays/{id}")
@@ -106,5 +108,11 @@ class ScheduleController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deleteBay(@AuthenticationPrincipal Jwt jwt, @PathVariable short id) {
         schedule.deleteBay(id, AuthenticatedUser.userId(jwt));
+    }
+
+    /** Historial de cambios de horario, excepciones y bahias, mas reciente primero. */
+    @GetMapping("/api/v1/admin/schedule/history")
+    List<HistoryEntryResponse> history() {
+        return schedule.history().stream().map(HistoryEntryResponse::from).toList();
     }
 }

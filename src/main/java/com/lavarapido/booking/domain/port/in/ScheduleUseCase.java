@@ -4,6 +4,7 @@ import com.lavarapido.booking.domain.model.BayStatus;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 import com.lavarapido.booking.domain.model.ServiceBay;
 
 import java.time.LocalDate;
@@ -34,4 +35,7 @@ public interface ScheduleUseCase {
     void deleteBay(short bayId, long actor);
 
     Establishment establishment();
+
+    /** Historial de cambios de horario, excepciones y bahias (mas reciente primero). */
+    List<ScheduleHistoryEntry> history();
 }

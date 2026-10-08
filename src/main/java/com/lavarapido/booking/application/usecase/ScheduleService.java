@@ -7,6 +7,8 @@ import com.lavarapido.booking.domain.model.BayStatus;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.ScheduleEntityType;
+import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 import com.lavarapido.booking.domain.model.ServiceBay;
 import com.lavarapido.booking.domain.port.in.ScheduleUseCase;
 import com.lavarapido.booking.domain.port.out.BayRepository;
@@ -67,6 +69,7 @@ public class ScheduleService implements ScheduleUseCase {
             throw new InvalidValueException("INVALID_WEEK", "Send the 7 days of the week, one time each");
         }
         schedule.saveBusinessHours(hours, actor);
+        schedule.recordHistory(ScheduleEntityType.WEEK, "Horario semanal actualizado", null, actor);
         return businessHours();
     }
 
@@ -83,6 +86,7 @@ public class ScheduleService implements ScheduleUseCase {
             throw new ConflictException("EXCEPTION_DATE_TAKEN", "That date already has an exception");
         }
         int id = schedule.saveException(exception, actor);
+        schedule.recordHistory(ScheduleEntityType.EXCEPTION, "Excepción agregada", exception.reason(), actor);
         return requireException(id);
     }
 
@@ -98,13 +102,15 @@ public class ScheduleService implements ScheduleUseCase {
         HoursException changed = new HoursException(exceptionId, exception.date(), exception.closed(),
                 exception.opensAt(), exception.closesAt(), exception.reason());
         schedule.saveException(changed, actor);
+        schedule.recordHistory(ScheduleEntityType.EXCEPTION, "Excepción actualizada", exception.reason(), actor);
         return requireException(exceptionId);
     }
 
     @Override
     public void deleteException(int exceptionId, long actor) {
-        requireException(exceptionId);
+        HoursException target = requireException(exceptionId);
         schedule.deleteException(exceptionId, actor, clock.instant());
+        schedule.recordHistory(ScheduleEntityType.EXCEPTION, "Excepción eliminada", target.reason(), actor);
     }
 
     @Override
@@ -119,28 +125,35 @@ public class ScheduleService implements ScheduleUseCase {
         if (bays.existsName(cleanName, null)) {
             throw new ConflictException("BAY_NAME_TAKEN", "Another bay already has that name");
         }
-        return bays.insert(cleanName, status == null ? BayStatus.ACTIVE : status, actor);
+        ServiceBay created = bays.insert(cleanName, status == null ? BayStatus.ACTIVE : status, actor);
+        schedule.recordHistory(ScheduleEntityType.BAY, "Bahía agregada", created.name(), actor);
+        return created;
     }
 
     @Override
     public ServiceBay updateBay(short bayId, String name, BayStatus status, long actor) {
-        requireBay(bayId);
+        ServiceBay before = requireBay(bayId);
         String cleanName = ServiceBay.requireName(name);
         if (bays.existsName(cleanName, bayId)) {
             throw new ConflictException("BAY_NAME_TAKEN", "Another bay already has that name");
         }
         bays.update(bayId, cleanName, status, actor);
-        return requireBay(bayId);
+        ServiceBay after = requireBay(bayId);
+        schedule.recordHistory(ScheduleEntityType.BAY,
+                before.status() != after.status() ? "Bahía cambió de estado" : "Bahía actualizada",
+                after.name() + " · " + after.status().name(), actor);
+        return after;
     }
 
     /** No se borra una bahia con reservas por delante: primero hay que moverlas o cancelarlas. */
     @Override
     public void deleteBay(short bayId, long actor) {
-        requireBay(bayId);
+        ServiceBay target = requireBay(bayId);
         if (bookings.hasUpcomingOnBay(bayId, clock.instant())) {
             throw new ConflictException("BAY_HAS_BOOKINGS", "The bay has upcoming bookings");
         }
         bays.softDelete(bayId, actor, clock.instant());
+        schedule.recordHistory(ScheduleEntityType.BAY, "Bahía eliminada", target.name(), actor);
     }
 
     @Override
@@ -148,6 +161,12 @@ public class ScheduleService implements ScheduleUseCase {
     public Establishment establishment() {
         return schedule.findEstablishment()
                 .orElseThrow(() -> new NotFoundException("ESTABLISHMENT_NOT_FOUND", "The business data is not set"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ScheduleHistoryEntry> history() {
+        return schedule.findHistory(100);
     }
 
     private ServiceBay requireBay(short bayId) {

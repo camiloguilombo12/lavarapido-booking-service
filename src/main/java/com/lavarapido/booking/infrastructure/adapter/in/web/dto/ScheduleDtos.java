@@ -5,6 +5,7 @@ import com.lavarapido.booking.domain.model.BayStatus;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 import com.lavarapido.booking.domain.model.ServiceBay;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -12,6 +13,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -78,6 +80,15 @@ public final class ScheduleDtos {
 
         public static BayResponse from(ServiceBay bay) {
             return bay == null ? null : new BayResponse(bay.id(), bay.code(), bay.name(), bay.status().name());
+        }
+    }
+
+    public record HistoryEntryResponse(long id, String entityType, String title, String detail, Instant changedAt,
+                                       Long changedBy) {
+
+        public static HistoryEntryResponse from(ScheduleHistoryEntry entry) {
+            return new HistoryEntryResponse(entry.id(), entry.entityType().name(), entry.title(), entry.detail(),
+                    entry.changedAt(), entry.changedBy());
         }
     }
 
