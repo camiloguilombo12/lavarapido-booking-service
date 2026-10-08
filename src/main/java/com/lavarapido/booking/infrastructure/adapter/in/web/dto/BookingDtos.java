@@ -90,11 +90,11 @@ public final class BookingDtos {
 
     /** lineId = booking_service_id (operations-service ejecuta y califica por linea). */
     public record LineResponse(Long lineId, int serviceId, String code, String name, BigDecimal price,
-                               short estimatedMinutes, short quantity) {
+                               short estimatedMinutes, short quantity, int loyaltyPoints) {
 
         static LineResponse from(BookingLine line) {
             return new LineResponse(line.lineId(), line.serviceId(), line.serviceCode(), line.serviceName(), line.price(),
-                    line.estimatedMinutes(), line.quantity());
+                    line.estimatedMinutes(), line.quantity(), line.loyaltyPoints());
         }
     }
 
@@ -120,6 +120,7 @@ public final class BookingDtos {
             BigDecimal subtotal,
             BigDecimal pointsDiscountAmount,
             BigDecimal total,
+            int totalLoyaltyPoints,
             ReasonResponse cancellationReason,
             String notes,
             boolean changeable,
@@ -145,6 +146,7 @@ public final class BookingDtos {
                     booking.subtotal(),
                     booking.pointsDiscountAmount(),
                     booking.total(),
+                    booking.totalLoyaltyPoints(),
                     ReasonResponse.from(booking.cancellationReason()),
                     booking.notes(),
                     view.changeable(),

@@ -137,6 +137,11 @@ public class Booking {
         return lines.stream().mapToInt(BookingLine::minutes).sum();
     }
 
+    /** Puntos de fidelizacion que gana el cliente si esta reserva se paga (payment-service los acredita). */
+    public int totalLoyaltyPoints() {
+        return lines.stream().mapToInt(BookingLine::pointsEarned).sum();
+    }
+
     /** Codigo que ve la gente: sale del id, asi no hace falta otra columna. */
     public String code() {
         return codeOf(id);

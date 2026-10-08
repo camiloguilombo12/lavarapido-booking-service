@@ -219,7 +219,8 @@ class BookingPersistenceAdapter implements BookingRepository {
         ServiceJpaEntity service = serviceById.get(price.getServiceId());
         return new BookingLine(price.getId(), price.getServiceId(), service == null ? null : service.getCode(),
                 service == null ? null : service.getName(), price.getPrice(), price.getEstimatedMinutes(),
-                line.getQuantity(), line.getId());
+                line.getQuantity(), line.getId(),
+                service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints());
     }
 
     private static CancellationReason toReason(CancellationReasonJpaEntity entity) {
