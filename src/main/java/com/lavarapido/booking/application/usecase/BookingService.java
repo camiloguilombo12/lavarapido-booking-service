@@ -271,7 +271,7 @@ public class BookingService implements BookingUseCase {
             ServicePrice price = item.priceFor(vehicleTypeId).orElseThrow(() -> new ConflictException(
                     "SERVICE_NOT_AVAILABLE_FOR_VEHICLE", "Service " + item.code() + " has no price for this vehicle type"));
             lines.add(new BookingLine(price.id(), item.id(), item.code(), item.name(), price.price(),
-                    price.estimatedMinutes(), DEFAULT_QUANTITY));
+                    price.estimatedMinutes(), DEFAULT_QUANTITY, item.loyaltyPoints()));
         }
         return lines;
     }
