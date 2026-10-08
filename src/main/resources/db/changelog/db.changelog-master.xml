@@ -8,6 +8,9 @@
   Numeración global del proyecto (migration-strategy.md), no reiniciada por servicio:
     005  esquemas y tablas del booking-service (+ triggers)
     018  cambios de ADR-010: estado de bahía y pausa del día
+    021  historial de cambios de horario, excepciones y bahías
+    022  puntos de fidelidad por servicio
+    024  quita operator_id de service_bay (un intento local anterior que no cumplía ADR-010)
     103  seed del catálogo (categorías, servicios y precios por tipo de vehículo)
     104  seed de estados de reserva y motivos de cancelación
     109  seed del negocio, horario semanal y bahías
@@ -20,6 +23,9 @@
 
     <include file="db/changelog/005-create-booking-schemas.sql"/>
     <include file="db/changelog/018-booking-adr-010.sql"/>
+    <include file="db/changelog/021-booking-schedule-history.sql"/>
+    <include file="db/changelog/022-booking-catalog-loyalty-points.sql"/>
+    <include file="db/changelog/024-booking-revert-bay-operator.sql"/>
     <include file="db/changelog/seed/103-seed-catalog.sql"/>
     <include file="db/changelog/seed/104-seed-booking-catalogs.sql"/>
     <include file="db/changelog/seed/109-seed-establishment-schedule.sql"/>
