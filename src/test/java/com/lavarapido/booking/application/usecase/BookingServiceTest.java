@@ -63,7 +63,8 @@ class BookingServiceTest {
             new VehicleSnapshot(5L, "ABC123", "ABC-123", "SUV", SUV, "Camioneta SUV", "Mazda", "CX-5", null);
     private static final CatalogItem PREMIUM = new CatalogItem(2, "PREMIUM", "Premium", null,
             new ServiceCategory((short) 1, "LAVADO", "Lavado", (short) 1), true,
-            List.of(new ServicePrice(30L, 2, SUV, new BigDecimal("40000"), (short) 75, LocalDate.parse("2026-01-01"), null)));
+            List.of(new ServicePrice(30L, 2, SUV, new BigDecimal("40000"), (short) 75, LocalDate.parse("2026-01-01"), null)),
+            0);
 
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final CatalogRepository catalog = mock(CatalogRepository.class);
