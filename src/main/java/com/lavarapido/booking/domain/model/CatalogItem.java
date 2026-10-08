@@ -11,10 +11,17 @@ import java.util.Optional;
  * tiene precio propio (2FN): el precio depende del par servicio + tipo de vehiculo.
  */
 public record CatalogItem(int id, String code, String name, String description, ServiceCategory category,
-                          boolean active, List<ServicePrice> prices) {
+                          boolean active, List<ServicePrice> prices, int loyaltyPoints) {
 
     public CatalogItem {
         prices = prices == null ? List.of() : List.copyOf(prices);
+    }
+
+    public static int requireLoyaltyPoints(int raw) {
+        if (raw < 0) {
+            throw new InvalidValueException("INVALID_LOYALTY_POINTS", "Loyalty points cannot be negative");
+        }
+        return raw;
     }
 
     public Optional<ServicePrice> priceFor(short vehicleTypeId) {

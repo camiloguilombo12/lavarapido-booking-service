@@ -25,9 +25,9 @@ public interface CatalogRepository {
     boolean existsCode(String code);
 
     /** Crea el servicio (sin tarifas) y devuelve su id. */
-    int insertService(String code, String name, String description, short categoryId, long actor);
+    int insertService(String code, String name, String description, short categoryId, int loyaltyPoints, long actor);
 
-    void updateService(int serviceId, String name, String description, short categoryId, long actor);
+    void updateService(int serviceId, String name, String description, short categoryId, int loyaltyPoints, long actor);
 
     void setActive(int serviceId, boolean active, long actor);
 
