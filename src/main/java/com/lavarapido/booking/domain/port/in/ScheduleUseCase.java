@@ -36,6 +36,9 @@ public interface ScheduleUseCase {
 
     Establishment establishment();
 
+    /** Guarda los datos del negocio (Configuracion del admin); el nombre comercial no cambia si viene vacio. */
+    Establishment updateEstablishment(Establishment establishment, long actor);
+
     /** Historial de cambios de horario, excepciones y bahias (mas reciente primero). */
     List<ScheduleHistoryEntry> history();
 }

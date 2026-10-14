@@ -164,6 +164,28 @@ public class ScheduleService implements ScheduleUseCase {
     }
 
     @Override
+    public Establishment updateEstablishment(Establishment changes, long actor) {
+        Establishment current = establishment();
+        String tradeName = changes.tradeName() == null || changes.tradeName().isBlank()
+                ? current.tradeName() : changes.tradeName();
+        Establishment next = new Establishment(trim(changes.legalName()), tradeName, trim(changes.taxId()),
+                trim(changes.businessType()), changes.foundedOn(), trim(changes.legalRepresentative()),
+                trim(changes.legalRepresentativeDocument()), trim(changes.address()), trim(changes.phone()),
+                trim(changes.email()), trim(changes.website()), trim(changes.taxRegime()), trim(changes.ciiuActivity()),
+                trim(changes.dianResolution()), trim(changes.invoicePrefix()), trim(changes.invoiceRange()),
+                trim(changes.instagram()), trim(changes.facebook()), trim(changes.supportLine()),
+                trim(changes.serviceHoursNote()), current.logoUrl())
+                .requireValid(LocalDate.now(clock.withZone(settings.zone())));
+        schedule.saveEstablishment(next, actor);
+        return next;
+    }
+
+    /** Vacio se guarda como NULL, asi la base no queda con textos en blanco. */
+    private static String trim(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<ScheduleHistoryEntry> history() {
         return schedule.findHistory(100);

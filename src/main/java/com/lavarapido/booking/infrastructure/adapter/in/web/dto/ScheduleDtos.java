@@ -92,13 +92,55 @@ public final class ScheduleDtos {
         }
     }
 
+    /** Lo publico de la sede (landing y app sin sesion): sin representante legal ni datos fiscales. */
     public record EstablishmentResponse(String tradeName, String legalName, String taxId, String address,
-                                        String phone, String email, String logoUrl) {
+                                        String phone, String email, String logoUrl, String website,
+                                        String instagram, String facebook, String supportLine,
+                                        String serviceHoursNote) {
 
         public static EstablishmentResponse from(Establishment establishment) {
             return new EstablishmentResponse(establishment.tradeName(), establishment.legalName(),
                     establishment.taxId(), establishment.address(), establishment.phone(), establishment.email(),
-                    establishment.logoUrl());
+                    establishment.logoUrl(), establishment.website(), establishment.instagram(),
+                    establishment.facebook(), establishment.supportLine(), establishment.serviceHoursNote());
+        }
+    }
+
+    /** Todos los datos del negocio, para Configuracion del admin. */
+    public record BusinessDataDto(
+            @Size(max = 150) String tradeName,
+            @NotBlank @Size(max = 150) String legalName,
+            @NotBlank @Size(max = 30) String taxId,
+            @Size(max = 100) String businessType,
+            LocalDate foundedOn,
+            @Size(max = 150) String legalRepresentative,
+            @Size(max = 30) String legalRepresentativeDocument,
+            @NotBlank @Size(max = 200) String address,
+            @Size(max = 20) String phone,
+            @Size(max = 120) String email,
+            @Size(max = 200) String website,
+            @Size(max = 150) String taxRegime,
+            @Size(max = 150) String ciiuActivity,
+            @Size(max = 60) String dianResolution,
+            @Size(max = 10) String invoicePrefix,
+            @Size(max = 30) String invoiceRange,
+            @Size(max = 100) String instagram,
+            @Size(max = 150) String facebook,
+            @Size(max = 30) String supportLine,
+            @Size(max = 150) String serviceHoursNote) {
+
+        public static BusinessDataDto from(Establishment e) {
+            return new BusinessDataDto(e.tradeName(), e.legalName(), e.taxId(), e.businessType(), e.foundedOn(),
+                    e.legalRepresentative(), e.legalRepresentativeDocument(), e.address(), e.phone(), e.email(),
+                    e.website(), e.taxRegime(), e.ciiuActivity(), e.dianResolution(), e.invoicePrefix(),
+                    e.invoiceRange(), e.instagram(), e.facebook(), e.supportLine(), e.serviceHoursNote());
+        }
+
+        public Establishment toDomain() {
+            return new Establishment(legalName, tradeName, taxId, businessType, foundedOn, legalRepresentative,
+                    legalRepresentativeDocument, address, phone, email, website, taxRegime, ciiuActivity,
+                    dianResolution, invoicePrefix, invoiceRange, instagram, facebook, supportLine, serviceHoursNote,
+                    null);
         }
     }
 }

@@ -32,6 +32,9 @@ public interface ScheduleRepository {
 
     Optional<Establishment> findEstablishment();
 
+    /** Actualiza la unica fila de datos del negocio. */
+    void saveEstablishment(Establishment establishment, long actor);
+
     /** Mas reciente primero. */
     List<ScheduleHistoryEntry> findHistory(int limit);
 

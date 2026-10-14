@@ -4,6 +4,7 @@ import com.lavarapido.booking.domain.port.in.ScheduleUseCase;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.BayRequest;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.BayResponse;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.BusinessHourDto;
+import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.BusinessDataDto;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.EstablishmentResponse;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.ExceptionRequest;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.ScheduleDtos.ExceptionResponse;
@@ -30,7 +31,8 @@ import java.util.List;
 /**
  * Horario, excepciones, bahias y datos de la sede.
  * Publico: /api/v1/schedule/** y /api/v1/establishment (solo lectura).
- * ADMIN: /api/v1/admin/schedule/** y /api/v1/admin/bays ("Horarios y bahias").
+ * ADMIN: /api/v1/admin/schedule/**, /api/v1/admin/bays ("Horarios y bahias") y
+ * /api/v1/admin/establishment (datos del negocio de Configuracion).
  */
 @RestController
 @Validated
@@ -55,6 +57,16 @@ class ScheduleController {
     @GetMapping("/api/v1/establishment")
     EstablishmentResponse establishment() {
         return EstablishmentResponse.from(schedule.establishment());
+    }
+
+    @GetMapping("/api/v1/admin/establishment")
+    BusinessDataDto businessData() {
+        return BusinessDataDto.from(schedule.establishment());
+    }
+
+    @PutMapping("/api/v1/admin/establishment")
+    BusinessDataDto updateBusinessData(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody BusinessDataDto request) {
+        return BusinessDataDto.from(schedule.updateEstablishment(request.toDomain(), AuthenticatedUser.userId(jwt)));
     }
 
     /** Los 7 dias de una vez: la pantalla guarda la semana completa con "Guardar cambios". */
