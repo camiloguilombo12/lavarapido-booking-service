@@ -128,7 +128,9 @@ public class BookingService implements BookingUseCase {
                 toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(), caller.userId(), request.notes(), now);
         Booking saved = bookings.save(booking, caller.userId());
 
-        publish(BookingEvent.Type.CONFIRMED, saved, customerUserOf(vehicle, caller), null);
+        events.publish(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.id(), saved.code(),
+                customerUserOf(vehicle, caller), saved.customerVehicleId(), saved.scheduledStart(),
+                saved.serviceBayId(), null, clock.instant(), request.preferredOperatorId()));
         return view(saved, vehicle, caller);
     }
 
