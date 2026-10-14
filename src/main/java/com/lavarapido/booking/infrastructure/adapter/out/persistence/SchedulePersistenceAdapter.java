@@ -7,6 +7,7 @@ import com.lavarapido.booking.domain.model.ScheduleEntityType;
 import com.lavarapido.booking.domain.model.ScheduleHistoryEntry;
 import com.lavarapido.booking.domain.port.out.ScheduleRepository;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourExceptionJpaEntity;
+import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.EstablishmentJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BusinessHourJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.ScheduleHistoryJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.repository.ScheduleJpaRepositories;
@@ -130,7 +131,39 @@ class SchedulePersistenceAdapter implements ScheduleRepository {
     public Optional<Establishment> findEstablishment() {
         return establishments.findFirstByDeletedAtIsNull()
                 .map(entity -> new Establishment(entity.getLegalName(), entity.getTradeName(), entity.getTaxId(),
-                        entity.getAddress(), entity.getPhone(), entity.getEmail(), entity.getLogoUrl()));
+                        entity.getBusinessType(), entity.getFoundedOn(), entity.getLegalRepresentative(),
+                        entity.getLegalRepresentativeDocument(), entity.getAddress(), entity.getPhone(),
+                        entity.getEmail(), entity.getWebsite(), entity.getTaxRegime(), entity.getCiiuActivity(),
+                        entity.getDianResolution(), entity.getInvoicePrefix(), entity.getInvoiceRange(),
+                        entity.getInstagram(), entity.getFacebook(), entity.getSupportLine(),
+                        entity.getServiceHoursNote(), entity.getLogoUrl()));
+    }
+
+    @Override
+    public void saveEstablishment(Establishment data, long actor) {
+        EstablishmentJpaEntity entity = establishments.findFirstByDeletedAtIsNull().orElseThrow();
+        entity.setLegalName(data.legalName());
+        entity.setTradeName(data.tradeName());
+        entity.setTaxId(data.taxId());
+        entity.setBusinessType(data.businessType());
+        entity.setFoundedOn(data.foundedOn());
+        entity.setLegalRepresentative(data.legalRepresentative());
+        entity.setLegalRepresentativeDocument(data.legalRepresentativeDocument());
+        entity.setAddress(data.address());
+        entity.setPhone(data.phone());
+        entity.setEmail(data.email());
+        entity.setWebsite(data.website());
+        entity.setTaxRegime(data.taxRegime());
+        entity.setCiiuActivity(data.ciiuActivity());
+        entity.setDianResolution(data.dianResolution());
+        entity.setInvoicePrefix(data.invoicePrefix());
+        entity.setInvoiceRange(data.invoiceRange());
+        entity.setInstagram(data.instagram());
+        entity.setFacebook(data.facebook());
+        entity.setSupportLine(data.supportLine());
+        entity.setServiceHoursNote(data.serviceHoursNote());
+        entity.setUpdatedBy(actor);
+        establishments.save(entity);
     }
 
     private static HoursException toException(BusinessHourExceptionJpaEntity entity) {
