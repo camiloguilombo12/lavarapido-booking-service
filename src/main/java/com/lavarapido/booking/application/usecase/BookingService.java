@@ -68,6 +68,8 @@ public class BookingService implements BookingUseCase {
     private static final short DEFAULT_QUANTITY = 1;
     private static final String CUSTOMER_CANCEL_REASON = "CUSTOMER_REQUEST";
     private static final long MAX_LIST_DAYS = 62;
+    // quien llama por la llave interna: ve todo, como el admin, pero no cambia nada
+    private static final Caller SERVICE = new Caller(0L, true);
 
     private final BookingRepository bookings;
     private final CatalogRepository catalog;
@@ -199,6 +201,27 @@ public class BookingService implements BookingUseCase {
     public BookingView get(long bookingId, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         return view(booking, vehicleOf(booking, caller), caller);
+    }
+
+    /** Para otros servicios (llave interna): la reserva sin los datos del vehículo. */
+    @Override
+    @Transactional(readOnly = true)
+    public BookingView getForService(long bookingId) {
+        Booking booking = bookings.findById(bookingId)
+                .orElseThrow(() -> new NotFoundException("BOOKING_NOT_FOUND", "Booking " + bookingId + " does not exist"));
+        return view(booking, null, SERVICE);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BookingView> listForService(LocalDate from, LocalDate to) {
+        if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > MAX_LIST_DAYS) {
+            throw new InvalidValueException("INVALID_RANGE", "The range must go forward and cover at most "
+                    + MAX_LIST_DAYS + " days");
+        }
+        Map<Short, ServiceBay> bayById = baysById();
+        return bookings.findStartingBetween(toInstant(from.atStartOfDay()), toInstant(to.plusDays(1).atStartOfDay()), null)
+                .stream().map(booking -> view(booking, null, bayById, SERVICE)).toList();
     }
 
     @Override

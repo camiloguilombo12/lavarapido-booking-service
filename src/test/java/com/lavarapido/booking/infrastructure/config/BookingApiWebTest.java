@@ -36,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "security.jwt.secret=" + BookingApiWebTest.SECRET,
         "security.jwt.issuer=" + BookingApiWebTest.ISSUER,
         "security.jwt.audience=" + BookingApiWebTest.AUDIENCE,
-        "security.jwt.access-token-ttl=1h"
+        "security.jwt.access-token-ttl=1h",
+        "app.internal.api-key=" + BookingApiWebTest.INTERNAL_KEY
 })
 @Import({SecurityConfig.class, JwtConfig.class, ProblemDetailsSecurityHandler.class, CorrelationIdFilter.class})
 class BookingApiWebTest {
@@ -44,6 +45,7 @@ class BookingApiWebTest {
     static final String SECRET = "test-secret-with-at-least-thirty-two-bytes!!";
     static final String ISSUER = "lavarapido-security-service";
     static final String AUDIENCE = "lavarapido-api";
+    static final String INTERNAL_KEY = "internal-test-key";
 
     @Autowired
     private MockMvc mvc;
@@ -132,5 +134,23 @@ class BookingApiWebTest {
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/admin/bookings").header("Authorization", token(30L, "OPERATOR")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void internalRoutesOnlyAcceptTheInternalKey() throws Exception {
+        given(bookings.listForService(any(), any())).willReturn(java.util.List.of());
+
+        mvc.perform(get("/internal/v1/bookings").param("from", "2026-10-14").param("to", "2026-10-14"))
+                .andExpect(status().isUnauthorized());
+        // ni siquiera el token de un admin abre las rutas internas
+        mvc.perform(get("/internal/v1/bookings").param("from", "2026-10-14").param("to", "2026-10-14")
+                        .header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/v1/bookings").param("from", "2026-10-14").param("to", "2026-10-14")
+                        .header("X-Internal-Key", "otra"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/v1/bookings").param("from", "2026-10-14").param("to", "2026-10-14")
+                        .header("X-Internal-Key", INTERNAL_KEY))
+                .andExpect(status().isOk());
     }
 }

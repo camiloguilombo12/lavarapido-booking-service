@@ -58,6 +58,10 @@ security:
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:1h}
 
 app:
+  # llave compartida para /internal/** (X-Internal-Key): operations-service lee reservas sin usuario
+  # detrás (asignación automática, RF-008). Vacía: esas rutas responden 401
+  internal:
+    api-key: ${INTERNAL_API_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
   messaging:

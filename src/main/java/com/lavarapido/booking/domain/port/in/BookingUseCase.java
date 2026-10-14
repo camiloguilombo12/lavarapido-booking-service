@@ -30,6 +30,11 @@ public interface BookingUseCase {
     /** Solo admin: reservas que empiezan entre from y to (fechas locales, ambas incluidas). */
     List<BookingView> list(LocalDate from, LocalDate to, BookingStatus status, Caller caller);
 
+    /** Para otros servicios por la llave interna (RF-008/010): sin los datos del vehículo. */
+    BookingView getForService(long bookingId);
+
+    List<BookingView> listForService(LocalDate from, LocalDate to);
+
     /** Reservas de un día (por defecto hoy, en la hora del lavadero) frente al día anterior. Solo admin. */
     DaySummary daySummary(LocalDate date, Caller caller);
 

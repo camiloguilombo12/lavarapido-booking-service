@@ -1,8 +1,10 @@
 package com.lavarapido.booking.infrastructure.config;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -12,6 +14,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -46,7 +49,31 @@ class SecurityConfig {
             "/v3/api-docs/**"
     };
 
+    /**
+     * Rutas entre servicios (/internal/**): solo la llave interna (InternalApiKeyFilter), nunca el JWT
+     * de un usuario. Fuera de /api/v1 para que el gateway no las exponga. Se revisa antes que la API.
+     */
     @Bean
+    @Order(1)
+    SecurityFilterChain internalFilterChain(HttpSecurity http, ProblemDetailsSecurityHandler entryPoint,
+                                            @Value("${app.internal.api-key:}") String internalApiKey) throws Exception {
+        http
+                .securityMatcher("/internal/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new InternalApiKeyFilter(internalApiKey), AuthorizationFilter.class)
+                .authorizeHttpRequests(auth -> auth.anyRequest().hasRole("INTERNAL"))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint(entryPoint)
+                        .accessDeniedHandler(entryPoint));
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain filterChain(HttpSecurity http, ProblemDetailsSecurityHandler entryPoint) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
