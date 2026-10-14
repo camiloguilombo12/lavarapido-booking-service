@@ -8,6 +8,7 @@ import com.lavarapido.booking.domain.exception.SlotUnavailableException;
 import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BookingLine;
 import com.lavarapido.booking.domain.model.BookingStatus;
+import com.lavarapido.booking.domain.model.DaySummary;
 import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.CancellationReason;
 import com.lavarapido.booking.domain.model.CatalogItem;
@@ -198,6 +199,20 @@ public class BookingService implements BookingUseCase {
     public BookingView get(long bookingId, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         return view(booking, vehicleOf(booking, caller), caller);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DaySummary daySummary(LocalDate date, Caller caller) {
+        requireAdmin(caller);
+        LocalDate day = date == null ? today() : date;
+        return DaySummary.of(day, countOn(day), countOn(day.minusDays(1)));
+    }
+
+    // reservas con fecha de ese día, sin importar el estado (igual que la tarjeta "Reservas de hoy")
+    private int countOn(LocalDate day) {
+        return bookings.findStartingBetween(toInstant(day.atStartOfDay()), toInstant(day.plusDays(1).atStartOfDay()),
+                null).size();
     }
 
     @Override

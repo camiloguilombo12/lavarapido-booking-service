@@ -1,6 +1,7 @@
 package com.lavarapido.booking.infrastructure.adapter.in.web;
 
 import com.lavarapido.booking.domain.model.BookingStatus;
+import com.lavarapido.booking.domain.model.DaySummary;
 import com.lavarapido.booking.domain.port.in.BookingUseCase;
 import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.BookingDtos.BookingResponse;
@@ -46,6 +47,12 @@ class AdminBookingController {
         return bookings.list(from, to, filter, AuthenticatedUser.admin(jwt)).stream()
                 .map(view -> BookingResponse.from(view, true))
                 .toList();
+    }
+
+    /** Reservas del día frente al día anterior, para la tarjeta del inicio (date: por defecto hoy). */
+    @GetMapping("/day-summary")
+    DaySummary daySummary(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) LocalDate date) {
+        return bookings.daySummary(date, AuthenticatedUser.admin(jwt));
     }
 
     @GetMapping("/{id}")
