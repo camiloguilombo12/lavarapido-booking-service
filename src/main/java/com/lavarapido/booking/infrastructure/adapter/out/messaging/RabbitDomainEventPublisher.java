@@ -89,6 +89,10 @@ class RabbitDomainEventPublisher implements DomainEventPublisher {
         payload.put("customerVehicleId", event.customerVehicleId());
         payload.put("scheduledStart", event.scheduledStart().toString());
         payload.put("serviceBayId", event.serviceBayId());
+        // RF-010: operations-service asigna a este operario si está libre (solo al crear la reserva)
+        if (event.preferredOperatorId() != null) {
+            payload.put("preferredOperatorId", event.preferredOperatorId());
+        }
         if (event.reason() != null) {
             payload.put("reason", event.reason());
         }

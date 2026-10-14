@@ -11,6 +11,7 @@ import com.lavarapido.booking.domain.port.in.DayAvailability;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -33,10 +34,12 @@ public final class BookingDtos {
             @NotEmpty List<Integer> serviceIds,
             @NotNull LocalDate date,
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
-            @Size(max = 300) String notes) {
+            @Size(max = 300) String notes,
+            // RF-010: operario que eligió el cliente (opcional); operations-service lo asigna si está libre
+            @Positive Integer preferredOperatorId) {
 
         public BookingRequest toRequest() {
-            return new BookingRequest(vehicleId, serviceIds, date, time, notes);
+            return new BookingRequest(vehicleId, serviceIds, date, time, notes, preferredOperatorId);
         }
     }
 
