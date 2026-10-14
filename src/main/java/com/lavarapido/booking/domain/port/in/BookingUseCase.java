@@ -1,6 +1,7 @@
 package com.lavarapido.booking.domain.port.in;
 
 import com.lavarapido.booking.domain.model.BookingStatus;
+import com.lavarapido.booking.domain.model.DaySummary;
 import com.lavarapido.booking.domain.model.CancellationReason;
 
 import java.time.LocalDate;
@@ -28,6 +29,9 @@ public interface BookingUseCase {
 
     /** Solo admin: reservas que empiezan entre from y to (fechas locales, ambas incluidas). */
     List<BookingView> list(LocalDate from, LocalDate to, BookingStatus status, Caller caller);
+
+    /** Reservas de un día (por defecto hoy, en la hora del lavadero) frente al día anterior. Solo admin. */
+    DaySummary daySummary(LocalDate date, Caller caller);
 
     /** Solo admin: IN_PROGRESS, COMPLETED, NO_SHOW, CONFIRMED o CANCELLED (con motivo). */
     BookingView changeStatus(long bookingId, BookingStatus status, String reasonCode, Caller caller);

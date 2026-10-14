@@ -244,4 +244,22 @@ class BookingServiceTest {
         assertThrows(InvalidValueException.class,
                 () -> service.operatorAdvance(1L, BookingStatus.NO_SHOW, new Caller(30L, false)));
     }
+
+    @Test
+    void daySummaryComparesTheShopDayWithTheDayBefore() {
+        // 30/09 en Bogotá va de 05:00Z a 05:00Z del día siguiente
+        given(bookings.findStartingBetween(Instant.parse("2026-09-30T05:00:00Z"), Instant.parse("2026-10-01T05:00:00Z"), null))
+                .willReturn(List.of(mock(com.lavarapido.booking.domain.model.Booking.class)));
+        given(bookings.findStartingBetween(Instant.parse("2026-09-29T05:00:00Z"), Instant.parse("2026-09-30T05:00:00Z"), null))
+                .willReturn(List.of(mock(com.lavarapido.booking.domain.model.Booking.class),
+                        mock(com.lavarapido.booking.domain.model.Booking.class), mock(com.lavarapido.booking.domain.model.Booking.class)));
+
+        var summary = service.daySummary(null, ADMIN);
+
+        assertEquals(LocalDate.parse("2026-09-30"), summary.date());
+        assertEquals(1, summary.bookings());
+        assertEquals(3, summary.previousDayBookings());
+        assertEquals(-2, summary.difference());
+        assertThrows(com.lavarapido.booking.domain.exception.DomainException.class, () -> service.daySummary(null, CLIENT));
+    }
 }
