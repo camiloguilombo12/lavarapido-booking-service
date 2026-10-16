@@ -9,6 +9,7 @@ import com.lavarapido.booking.domain.model.BayStatus;
 import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BookingStatus;
 import com.lavarapido.booking.domain.model.BusinessHour;
+import com.lavarapido.booking.domain.model.UnavailableReason;
 import com.lavarapido.booking.domain.model.CancellationReason;
 import com.lavarapido.booking.domain.model.CatalogItem;
 import com.lavarapido.booking.domain.model.ServiceBay;
@@ -136,6 +137,19 @@ class BookingServiceTest {
         // la bahia 1 esta ocupada de 09:00 a 10:15 y la 2 en mantenimiento: la primera libre es 10:30
         assertEquals(5, error.alternatives().size());
         assertEquals(LocalTime.of(10, 30), error.alternatives().getFirst());
+        assertEquals(UnavailableReason.NO_FREE_BAY, error.reason());
+        verify(bookings, never()).save(any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("RF-006: una hora antes de abrir dice que está fuera del horario, no que no hay bahía")
+    void timeBeforeOpeningIsOutsideHours() {
+        SlotUnavailableException error = assertThrows(SlotUnavailableException.class,
+                () -> service.create(at("06:00"), CLIENT));
+
+        assertEquals(UnavailableReason.OUTSIDE_HOURS, error.reason());
+        assertEquals("SLOT_UNAVAILABLE", error.code());
+        assertEquals(LocalTime.of(8, 0), error.alternatives().getFirst());
         verify(bookings, never()).save(any(), anyLong());
     }
 

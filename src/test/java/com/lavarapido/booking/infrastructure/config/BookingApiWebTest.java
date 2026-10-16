@@ -110,6 +110,7 @@ class BookingApiWebTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("SLOT_UNAVAILABLE"))
+                .andExpect(jsonPath("$.reason").value("NO_FREE_BAY"))
                 .andExpect(jsonPath("$.alternatives[0]").value("10:30"));
     }
 

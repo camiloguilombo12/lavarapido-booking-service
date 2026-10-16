@@ -36,11 +36,15 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private static final DateTimeFormatter HOUR = DateTimeFormatter.ofPattern("HH:mm");
 
-    /** RF-006: la hora no esta libre; van las alternativas del mismo dia para que el cliente escoja. */
+    /**
+     * RF-006: la hora no esta libre; van las alternativas del mismo dia para que el cliente escoja y
+     * el motivo (reason: CLOSED_DAY, OUTSIDE_HOURS, TIME_PASSED o NO_FREE_BAY).
+     */
     @ExceptionHandler(SlotUnavailableException.class)
     ProblemDetail handleSlotUnavailable(SlotUnavailableException exception) {
         ProblemDetail problem = problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage());
         problem.setProperty("alternatives", exception.alternatives().stream().map(HOUR::format).toList());
+        problem.setProperty("reason", exception.reason().name());
         return problem;
     }
 
