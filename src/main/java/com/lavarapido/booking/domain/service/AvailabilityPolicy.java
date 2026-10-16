@@ -1,6 +1,7 @@
 package com.lavarapido.booking.domain.service;
 
 import com.lavarapido.booking.domain.model.DayWindow;
+import com.lavarapido.booking.domain.model.UnavailableReason;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -86,6 +87,22 @@ public final class AvailabilityPolicy {
                 .limit(max)
                 .sorted()
                 .toList();
+    }
+
+    /**
+     * Motivo por el que la hora pedida no sirve. Una hora que no aparece en la lista del dia no cabe
+     * en el horario (o el dia esta cerrado); si aparece pero sin bahia, ya paso o esta todo ocupado.
+     */
+    public static UnavailableReason whyUnavailable(List<Slot> slots, Optional<DayWindow> window,
+                                                   LocalDateTime requestedStart, LocalDateTime now) {
+        if (window.isEmpty()) {
+            return UnavailableReason.CLOSED_DAY;
+        }
+        LocalTime requested = requestedStart.toLocalTime();
+        if (slots.stream().noneMatch(slot -> slot.time().equals(requested))) {
+            return UnavailableReason.OUTSIDE_HOURS;
+        }
+        return requestedStart.isAfter(now) ? UnavailableReason.NO_FREE_BAY : UnavailableReason.TIME_PASSED;
     }
 
     private static boolean crossesBreak(LocalDate date, DayWindow day, LocalDateTime start, LocalDateTime end) {

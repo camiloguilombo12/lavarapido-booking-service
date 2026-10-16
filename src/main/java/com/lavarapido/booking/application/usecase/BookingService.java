@@ -331,13 +331,16 @@ public class BookingService implements BookingUseCase {
         if (time == null) {
             throw new InvalidValueException("TIME_REQUIRED", "Choose a time");
         }
-        List<Slot> slots = slotsOf(date, windowOf(date), durationOf(lines), excludeBookingId);
+        Optional<DayWindow> window = windowOf(date);
+        List<Slot> slots = slotsOf(date, window, durationOf(lines), excludeBookingId);
         LocalTime requested = time.truncatedTo(ChronoUnit.MINUTES);
         return slots.stream()
                 .filter(slot -> slot.time().equals(requested) && slot.available())
                 .findFirst()
                 .orElseThrow(() -> new SlotUnavailableException(
-                        AvailabilityPolicy.alternatives(slots, requested, settings.alternatives())));
+                        AvailabilityPolicy.alternatives(slots, requested, settings.alternatives()),
+                        AvailabilityPolicy.whyUnavailable(slots, window, date.atTime(requested),
+                                LocalDateTime.ofInstant(clock.instant(), settings.zone()))));
     }
 
     /** Un vehiculo no puede estar en dos reservas activas que se crucen (no puede estar en dos bahias). */

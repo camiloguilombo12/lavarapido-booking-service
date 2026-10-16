@@ -1,6 +1,7 @@
 package com.lavarapido.booking.domain.service;
 
 import com.lavarapido.booking.domain.model.DayWindow;
+import com.lavarapido.booking.domain.model.UnavailableReason;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Occupancy;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Slot;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +37,25 @@ class AvailabilityPolicyTest {
         assertEquals(LocalTime.of(9, 0), slots.getFirst().time());
         assertEquals(LocalTime.of(11, 0), slots.getLast().time());
         assertTrue(slots.stream().allMatch(Slot::available));
+    }
+
+    @Test
+    @DisplayName("el motivo distingue día cerrado, fuera del horario, hora pasada y bahías llenas")
+    void reasonOfAnUnavailableTime() {
+        List<Occupancy> taken = List.of(new Occupancy((short) 1, DAY.atTime(9, 0), DAY.atTime(10, 0)));
+        List<Slot> slots = AvailabilityPolicy.slots(DAY, NINE_TO_TWELVE, List.of((short) 1), taken, 60, 30, YESTERDAY);
+
+        assertEquals(UnavailableReason.CLOSED_DAY,
+                AvailabilityPolicy.whyUnavailable(List.of(), Optional.empty(), DAY.atTime(9, 0), YESTERDAY));
+        assertEquals(UnavailableReason.OUTSIDE_HOURS,
+                AvailabilityPolicy.whyUnavailable(slots, NINE_TO_TWELVE, DAY.atTime(8, 0), YESTERDAY));
+        // cabe a las 11:00 pero no a las 11:30: terminaría después del cierre
+        assertEquals(UnavailableReason.OUTSIDE_HOURS,
+                AvailabilityPolicy.whyUnavailable(slots, NINE_TO_TWELVE, DAY.atTime(11, 30), YESTERDAY));
+        assertEquals(UnavailableReason.NO_FREE_BAY,
+                AvailabilityPolicy.whyUnavailable(slots, NINE_TO_TWELVE, DAY.atTime(9, 0), YESTERDAY));
+        assertEquals(UnavailableReason.TIME_PASSED,
+                AvailabilityPolicy.whyUnavailable(slots, NINE_TO_TWELVE, DAY.atTime(10, 0), DAY.atTime(10, 30)));
     }
 
     @Test
