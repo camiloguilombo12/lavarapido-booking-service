@@ -122,10 +122,11 @@ public class ScheduleService implements ScheduleUseCase {
     @Override
     public ServiceBay createBay(String name, BayStatus status, long actor) {
         String cleanName = ServiceBay.requireName(name);
+        BayStatus initialStatus = ServiceBay.requireInitialStatus(status);
         if (bays.existsName(cleanName, null)) {
             throw new ConflictException("BAY_NAME_TAKEN", "Another bay already has that name");
         }
-        ServiceBay created = bays.insert(cleanName, status == null ? BayStatus.ACTIVE : status, actor);
+        ServiceBay created = bays.insert(cleanName, initialStatus, actor);
         schedule.recordHistory(ScheduleEntityType.BAY, "Bahía agregada", created.name(), actor);
         return created;
     }

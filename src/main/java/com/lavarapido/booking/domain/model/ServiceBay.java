@@ -18,4 +18,19 @@ public record ServiceBay(short id, String code, String name, BayStatus status) {
         }
         return name;
     }
+
+    /**
+     * Estado con el que nace una bahia: activa (por defecto) o inactiva. Mantenimiento solo aplica
+     * a una bahia que ya existe, por eso no se acepta al crearla.
+     */
+    public static BayStatus requireInitialStatus(BayStatus status) {
+        if (status == null) {
+            return BayStatus.ACTIVE;
+        }
+        if (status == BayStatus.MAINTENANCE) {
+            throw new InvalidValueException("BAY_NEW_IN_MAINTENANCE",
+                    "A new bay cannot start in maintenance; create it and then change its status");
+        }
+        return status;
+    }
 }
