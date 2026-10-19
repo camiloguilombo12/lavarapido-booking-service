@@ -31,5 +31,6 @@
     <include file="db/changelog/seed/104-seed-booking-catalogs.sql"/>
     <include file="db/changelog/seed/109-seed-establishment-schedule.sql"/>
     <include file="db/changelog/seed/110-seed-establishment-business-data.sql"/>
+    <include file="db/changelog/seed/111-clear-example-business-data.sql"/>
 
 </databaseChangeLog>
