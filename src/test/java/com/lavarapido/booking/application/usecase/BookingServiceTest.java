@@ -276,4 +276,42 @@ class BookingServiceTest {
         assertEquals(-2, summary.difference());
         assertThrows(com.lavarapido.booking.domain.exception.DomainException.class, () -> service.daySummary(null, CLIENT));
     }
+
+    @Test
+    @DisplayName("el cierre automatico deja NO_SHOW las confirmadas y cancela las programadas vencidas")
+    void closesExpiredBookings() {
+        // terminaron a las 08:15 y 08:30 de hoy en Bogota; ahora son las 10:00 (margen de 60 min)
+        Booking confirmed = existing(1L, 5L, "2026-09-30T12:00:00Z");
+        Booking scheduled = Booking.restore(2L, 6L, null, Instant.parse("2026-09-30T12:15:00Z"),
+                Instant.parse("2026-09-30T13:30:00Z"), BookingStatus.SCHEDULED, 8L, null, 0, BigDecimal.ZERO, null,
+                List.of(), NOW);
+        given(bookings.findNotStartedEndingBefore(Instant.parse("2026-09-30T14:00:00Z")))
+                .willReturn(List.of(confirmed, scheduled));
+        given(bookings.findCancellationReason("EXPIRED"))
+                .willReturn(Optional.of(new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false)));
+
+        assertEquals(2, service.closeExpired());
+
+        assertEquals(BookingStatus.NO_SHOW, confirmed.status());
+        assertEquals(BookingStatus.CANCELLED, scheduled.status());
+        verify(bookings).lockSchedule();
+        ArgumentCaptor<BookingEvent> event = ArgumentCaptor.forClass(BookingEvent.class);
+        verify(events).publish(event.capture());
+        assertEquals(BookingEvent.Type.CANCELLED, event.getValue().type());
+        assertEquals(2L, event.getValue().bookingId());
+    }
+
+    @Test
+    @DisplayName("sin reservas vencidas no cambia nada, y el motivo del sistema no se ofrece al cancelar")
+    void nothingToCloseAndTheSystemReasonIsHidden() {
+        given(bookings.findNotStartedEndingBefore(any())).willReturn(List.of());
+        given(bookings.findCancellationReasons()).willReturn(List.of(
+                new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false),
+                new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false)));
+
+        assertEquals(0, service.closeExpired());
+        verify(bookings, never()).save(any(), anyLong());
+        assertEquals(List.of("CUSTOMER_REQUEST"),
+                service.cancellationReasons().stream().map(CancellationReason::code).toList());
+    }
 }

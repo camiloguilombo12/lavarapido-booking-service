@@ -33,6 +33,9 @@ public interface BookingRepository {
 
     boolean hasUpcomingOnBay(short bayId, Instant from);
 
+    /** Reservas sin iniciar (SCHEDULED o CONFIRMED) que terminaron antes de esa hora. */
+    List<Booking> findNotStartedEndingBefore(Instant before);
+
     List<CancellationReason> findCancellationReasons();
 
     Optional<CancellationReason> findCancellationReason(String code);

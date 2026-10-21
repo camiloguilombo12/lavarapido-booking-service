@@ -67,6 +67,10 @@ public class BookingService implements BookingUseCase {
 
     private static final short DEFAULT_QUANTITY = 1;
     private static final String CUSTOMER_CANCEL_REASON = "CUSTOMER_REQUEST";
+    // motivo con el que el sistema cancela una reserva programada que vencio sin confirmarse
+    static final String EXPIRED_REASON = "EXPIRED";
+    // la tarea programada no es un usuario
+    private static final long SYSTEM_ACTOR = 0L;
     private static final long MAX_LIST_DAYS = 62;
     // quien llama por la llave interna: ve todo, como el admin, pero no cambia nada
     private static final Caller SERVICE = new Caller(0L, true);
@@ -289,7 +293,33 @@ public class BookingService implements BookingUseCase {
     @Override
     @Transactional(readOnly = true)
     public List<CancellationReason> cancellationReasons() {
-        return bookings.findCancellationReasons();
+        // el motivo del sistema no se ofrece al cancelar a mano
+        return bookings.findCancellationReasons().stream()
+                .filter(reason -> !EXPIRED_REASON.equals(reason.code()))
+                .toList();
+    }
+
+    @Override
+    public int closeExpired() {
+        Instant now = clock.instant();
+        // con la agenda bloqueada: nadie reprograma la misma reserva mientras se cierra
+        bookings.lockSchedule();
+        List<Booking> expired = bookings.findNotStartedEndingBefore(now.minus(settings.expiryGrace())).stream()
+                .filter(booking -> booking.isExpired(now, settings.expiryGrace()))
+                .toList();
+        if (expired.isEmpty()) {
+            return 0;
+        }
+        CancellationReason systemReason = requireReason(EXPIRED_REASON);
+        for (Booking booking : expired) {
+            booking.expire(systemReason);
+            Booking saved = bookings.save(booking, SYSTEM_ACTOR);
+            if (saved.status() == BookingStatus.CANCELLED) {
+                // notification-service cancela los recordatorios que quedaran pendientes
+                publish(BookingEvent.Type.CANCELLED, saved, null, systemReason.name());
+            }
+        }
+        return expired.size();
     }
 
     // ------------------------------------------------------------------ reglas internas

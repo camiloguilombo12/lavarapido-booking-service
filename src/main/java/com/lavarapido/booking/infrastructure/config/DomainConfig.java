@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneId;
 
 /** El reloj y los parametros de la agenda entran por el contexto para que las pruebas los fijen. */
@@ -21,10 +22,12 @@ class DomainConfig {
     BookingSettings bookingSettings(@Value("${app.booking.zone:America/Bogota}") String zone,
                                     @Value("${app.booking.slot-minutes:30}") int slotMinutes,
                                     @Value("${app.booking.max-days-ahead:60}") int maxDaysAhead,
-                                    @Value("${app.booking.alternatives:5}") int alternatives) {
-        if (slotMinutes < 5 || maxDaysAhead < 1 || alternatives < 1) {
+                                    @Value("${app.booking.alternatives:5}") int alternatives,
+                                    @Value("${app.booking.expiry-grace-minutes:60}") int expiryGraceMinutes) {
+        if (slotMinutes < 5 || maxDaysAhead < 1 || alternatives < 1 || expiryGraceMinutes < 0) {
             throw new IllegalStateException("app.booking.* has invalid values");
         }
-        return new BookingSettings(ZoneId.of(zone), slotMinutes, maxDaysAhead, alternatives);
+        return new BookingSettings(ZoneId.of(zone), slotMinutes, maxDaysAhead, alternatives,
+                Duration.ofMinutes(expiryGraceMinutes));
     }
 }
