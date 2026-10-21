@@ -278,7 +278,7 @@ class BookingServiceTest {
     }
 
     @Test
-    @DisplayName("el cierre automatico deja NO_SHOW las confirmadas y cancela las programadas vencidas")
+    @DisplayName("el cierre automatico cancela las programadas vencidas y no toca las confirmadas")
     void closesExpiredBookings() {
         // terminaron a las 08:15 y 08:30 de hoy en Bogota; ahora son las 10:00 (margen de 60 min)
         Booking confirmed = existing(1L, 5L, "2026-09-30T12:00:00Z");
@@ -290,15 +290,31 @@ class BookingServiceTest {
         given(bookings.findCancellationReason("EXPIRED"))
                 .willReturn(Optional.of(new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false)));
 
-        assertEquals(2, service.closeExpired());
+        assertEquals(1, service.closeExpired());
 
-        assertEquals(BookingStatus.NO_SHOW, confirmed.status());
+        // la confirmada la decide operations: pudo atenderse sin que nadie la registrara
+        assertEquals(BookingStatus.CONFIRMED, confirmed.status());
         assertEquals(BookingStatus.CANCELLED, scheduled.status());
         verify(bookings).lockSchedule();
         ArgumentCaptor<BookingEvent> event = ArgumentCaptor.forClass(BookingEvent.class);
         verify(events).publish(event.capture());
         assertEquals(BookingEvent.Type.CANCELLED, event.getValue().type());
         assertEquals(2L, event.getValue().bookingId());
+    }
+
+    @Test
+    @DisplayName("operations cierra como no asistio una confirmada vencida, nunca una que aun no vence")
+    void marksAnUnattendedBookingOnlyWhenExpired() {
+        // termino a las 08:15 de hoy en Bogota; ahora son las 10:00 (margen de 60 min)
+        Booking ended = existing(1L, 5L, "2026-09-30T12:00:00Z");
+        Booking later = existing(2L, 5L, "2026-09-30T14:30:00Z");
+        given(bookings.findById(1L)).willReturn(Optional.of(ended));
+        given(bookings.findById(2L)).willReturn(Optional.of(later));
+
+        assertEquals(BookingStatus.NO_SHOW, service.markUnattended(1L).booking().status());
+        assertThrows(com.lavarapido.booking.domain.exception.ConflictException.class, () -> service.markUnattended(2L));
+        assertEquals(BookingStatus.CONFIRMED, later.status());
+        verify(bookings).save(ended, 0L);
     }
 
     @Test

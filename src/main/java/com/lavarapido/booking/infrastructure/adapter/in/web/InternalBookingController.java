@@ -4,6 +4,7 @@ import com.lavarapido.booking.domain.port.in.BookingUseCase;
 import com.lavarapido.booking.infrastructure.adapter.in.web.dto.BookingDtos.BookingResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,5 +36,11 @@ class InternalBookingController {
     @GetMapping("/{id}")
     BookingResponse get(@PathVariable long id) {
         return BookingResponse.from(bookings.getForService(id), false);
+    }
+
+    /** operations-service cierra como no asistio una confirmada vencida que nunca tuvo operario. */
+    @PostMapping("/{id}/no-show")
+    BookingResponse noShow(@PathVariable long id) {
+        return BookingResponse.from(bookings.markUnattended(id), false);
     }
 }

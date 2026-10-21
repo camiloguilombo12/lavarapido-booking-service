@@ -138,19 +138,32 @@ class BookingTest {
     }
 
     @Test
-    @DisplayName("al vencer, la confirmada queda NO_SHOW y la programada cancelada con el motivo del sistema")
-    void expiringClosesTheBooking() {
+    @DisplayName("al vencer, solo la programada se cancela sola, con el motivo del sistema")
+    void onlyAScheduledBookingExpiresByItself() {
         CancellationReason expired = new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false);
-        Booking confirmed = confirmed();
         Booking scheduled = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
                 BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
 
-        confirmed.expire(expired);
         scheduled.expire(expired);
 
-        assertEquals(BookingStatus.NO_SHOW, confirmed.status());
-        assertEquals(null, confirmed.cancellationReason());
         assertEquals(BookingStatus.CANCELLED, scheduled.status());
         assertEquals("EXPIRED", scheduled.cancellationReason().code());
+        // una confirmada pudo atenderse sin registrarse: no se cierra sola
+        assertThrows(ConflictException.class, () -> confirmed().expire(expired));
+    }
+
+    @Test
+    @DisplayName("una confirmada sin operario queda NO_SHOW solo despues de la hora de fin mas el margen")
+    void anUnattendedBookingIsClosedOnlyOnceExpired() {
+        Booking booking = confirmed();
+        Duration hour = Duration.ofHours(1);
+
+        ConflictException early = assertThrows(ConflictException.class,
+                () -> booking.markUnattended(END.plus(Duration.ofMinutes(30)), hour));
+        assertEquals("BOOKING_NOT_EXPIRED", early.code());
+
+        booking.markUnattended(END.plus(hour), hour);
+        assertEquals(BookingStatus.NO_SHOW, booking.status());
+        assertThrows(ConflictException.class, () -> booking.markUnattended(END.plus(hour), hour));
     }
 }

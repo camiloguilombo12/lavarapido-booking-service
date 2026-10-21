@@ -42,7 +42,8 @@ public interface BookingUseCase {
     BookingView changeStatus(long bookingId, BookingStatus status, String reasonCode, Caller caller);
 
     /**
-     * TEMPORAL hasta que exista operations-service: reservas entre date y to (sin las canceladas)
+     * TEMPORAL hasta que exista operations-service: reservas entre date y to (sin las canceladas ni
+     * las que quedaron en no asistio)
      * para el operario. Sin to, solo ese dia. Sin asignacion por operario todavia, ve las de todo
      * el lavadero.
      */
@@ -54,8 +55,15 @@ public interface BookingUseCase {
     List<CancellationReason> cancellationReasons();
 
     /**
-     * Cierra las reservas que ya terminaron hace mas del margen y nunca se iniciaron (lo llama una
-     * tarea programada). Devuelve cuantas cerro.
+     * Cancela las reservas programadas que terminaron hace mas del margen sin confirmarse (lo llama
+     * una tarea programada). Las confirmadas no: esas las decide operations-service segun haya o no
+     * operario asignado. Devuelve cuantas cerro.
      */
     int closeExpired();
+
+    /**
+     * operations-service la pide para una confirmada vencida que nunca tuvo operario: nadie pudo
+     * atenderla, queda NO_SHOW. 409 BOOKING_NOT_EXPIRED si no esta confirmada o aun no vence.
+     */
+    BookingView markUnattended(long bookingId);
 }
