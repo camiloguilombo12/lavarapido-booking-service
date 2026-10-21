@@ -4,6 +4,7 @@ import com.lavarapido.booking.domain.exception.ConflictException;
 import com.lavarapido.booking.domain.exception.InvalidValueException;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -117,6 +118,26 @@ public class Booking {
                     "A booking cannot go from " + status + " to " + target);
         }
         this.status = target;
+    }
+
+    /**
+     * Ya paso la hora de fin mas el margen y nunca se inicio: se cierra sola para que no quede
+     * "activa" para siempre (una confirmada no llego el cliente; una programada nunca se confirmo).
+     */
+    public boolean isExpired(Instant now, Duration grace) {
+        return status.isChangeable() && !now.isBefore(scheduledEnd.plus(grace));
+    }
+
+    /**
+     * Cierre automatico de una reserva vencida: la confirmada queda NO_SHOW (el pago, si lo hubo,
+     * lo revisa el admin) y la programada queda CANCELLED con el motivo del sistema.
+     */
+    public void expire(CancellationReason systemReason) {
+        if (status == BookingStatus.CONFIRMED) {
+            moveTo(BookingStatus.NO_SHOW);
+        } else {
+            cancel(systemReason);
+        }
     }
 
     /** El cliente solo puede cambiarla antes de la hora de inicio y si no ha empezado. */

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -122,5 +123,34 @@ class BookingTest {
                 java.time.LocalTime.of(7, 0), java.time.LocalTime.of(9, 0)));
         assertThrows(InvalidValueException.class, () -> new BusinessHour((short) 8, true,
                 java.time.LocalTime.of(8, 0), java.time.LocalTime.of(17, 0), null, null));
+    }
+
+    @Test
+    @DisplayName("vence cuando pasa la hora de fin mas el margen y nunca se inicio")
+    void expiresAfterTheEndPlusTheGrace() {
+        Booking booking = confirmed();
+        Duration hour = Duration.ofHours(1);
+
+        assertFalse(booking.isExpired(END.plus(Duration.ofMinutes(59)), hour));
+        assertTrue(booking.isExpired(END.plus(hour), hour));
+        booking.moveTo(BookingStatus.IN_PROGRESS);
+        assertFalse(booking.isExpired(END.plus(Duration.ofDays(1)), hour));
+    }
+
+    @Test
+    @DisplayName("al vencer, la confirmada queda NO_SHOW y la programada cancelada con el motivo del sistema")
+    void expiringClosesTheBooking() {
+        CancellationReason expired = new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false);
+        Booking confirmed = confirmed();
+        Booking scheduled = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
+                BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
+
+        confirmed.expire(expired);
+        scheduled.expire(expired);
+
+        assertEquals(BookingStatus.NO_SHOW, confirmed.status());
+        assertEquals(null, confirmed.cancellationReason());
+        assertEquals(BookingStatus.CANCELLED, scheduled.status());
+        assertEquals("EXPIRED", scheduled.cancellationReason().code());
     }
 }
