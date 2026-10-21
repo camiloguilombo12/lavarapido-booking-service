@@ -124,6 +124,11 @@ class BookingPersistenceAdapter implements BookingRepository {
     }
 
     @Override
+    public List<Booking> findNotStartedEndingBefore(Instant before) {
+        return toDomain(bookings.findNotStartedEndingBefore(before));
+    }
+
+    @Override
     public List<CancellationReason> findCancellationReasons() {
         return reasons.findByActiveTrueAndDeletedAtIsNullOrderByDisplayOrderAsc().stream()
                 .map(BookingPersistenceAdapter::toReason)

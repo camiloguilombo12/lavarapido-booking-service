@@ -30,6 +30,14 @@ public final class BookingJpaRepositories {
                 """)
         List<BookingJpaEntity> findOccupying(@Param("from") Instant from, @Param("to") Instant to);
 
+        /** Sin iniciar (1, 2 = SCHEDULED, CONFIRMED) y con la hora de fin antes de :before. */
+        @Query("""
+                SELECT b FROM BookingJpaEntity b
+                WHERE b.deletedAt IS NULL AND b.statusId IN (1, 2) AND b.scheduledEnd < :before
+                ORDER BY b.scheduledStart ASC
+                """)
+        List<BookingJpaEntity> findNotStartedEndingBefore(@Param("before") Instant before);
+
         @Query("""
                 SELECT b FROM BookingJpaEntity b
                 WHERE b.deletedAt IS NULL

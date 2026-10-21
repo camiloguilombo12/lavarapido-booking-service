@@ -52,4 +52,10 @@ public interface BookingUseCase {
     BookingView operatorAdvance(long bookingId, BookingStatus status, Caller caller);
 
     List<CancellationReason> cancellationReasons();
+
+    /**
+     * Cierra las reservas que ya terminaron hace mas del margen y nunca se iniciaron (lo llama una
+     * tarea programada). Devuelve cuantas cerro.
+     */
+    int closeExpired();
 }

@@ -82,6 +82,12 @@ app:
     max-days-ahead: ${BOOKING_MAX_DAYS_AHEAD:60}
     # cuantas horas alternativas se ofrecen si la pedida esta ocupada (RF-006)
     alternatives: 5
+    # una reserva que nunca se inicio se cierra sola este tiempo despues de su hora de fin:
+    # confirmada -> NO_SHOW, programada -> CANCELLED (motivo EXPIRED)
+    expiry-grace-minutes: ${BOOKING_EXPIRY_GRACE_MINUTES:60}
+    expiry-check:
+      enabled: ${BOOKING_EXPIRY_CHECK_ENABLED:true}
+      interval: ${BOOKING_EXPIRY_CHECK_INTERVAL:PT5M}
 
 # Swagger apagado por defecto; application-dev.yml lo prende
 springdoc:
