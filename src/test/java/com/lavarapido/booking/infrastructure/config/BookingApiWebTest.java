@@ -154,4 +154,17 @@ class BookingApiWebTest {
                         .header("X-Internal-Key", INTERNAL_KEY))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void onlyOperationsCanCloseABookingAsNotAttended() throws Exception {
+        given(bookings.markUnattended(7L)).willThrow(new com.lavarapido.booking.domain.exception.ConflictException(
+                "BOOKING_NOT_EXPIRED", "not yet"));
+
+        // ni el admin con su token: esta decision es del sistema (sin operario asignado)
+        mvc.perform(post("/internal/v1/bookings/7/no-show").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/internal/v1/bookings/7/no-show").header("X-Internal-Key", INTERNAL_KEY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOOKING_NOT_EXPIRED"));
+    }
 }

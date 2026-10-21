@@ -274,7 +274,9 @@ public class BookingService implements BookingUseCase {
     public List<BookingView> operatorDay(LocalDate date, LocalDate to, Caller caller) {
         LocalDate day = date == null ? today() : date;
         return list(day, to == null ? day : to, null, staff(caller)).stream()
-                .filter(view -> view.booking().status() != BookingStatus.CANCELLED)
+                // una cancelada o una en no asistio ya no es trabajo pendiente del operario
+                .filter(view -> view.booking().status() != BookingStatus.CANCELLED
+                        && view.booking().status() != BookingStatus.NO_SHOW)
                 .toList();
     }
 
@@ -304,7 +306,9 @@ public class BookingService implements BookingUseCase {
         Instant now = clock.instant();
         // con la agenda bloqueada: nadie reprograma la misma reserva mientras se cierra
         bookings.lockSchedule();
+        // solo las programadas: una confirmada pudo atenderse sin registrarse (la decide operations)
         List<Booking> expired = bookings.findNotStartedEndingBefore(now.minus(settings.expiryGrace())).stream()
+                .filter(booking -> booking.status() == BookingStatus.SCHEDULED)
                 .filter(booking -> booking.isExpired(now, settings.expiryGrace()))
                 .toList();
         if (expired.isEmpty()) {
@@ -314,12 +318,19 @@ public class BookingService implements BookingUseCase {
         for (Booking booking : expired) {
             booking.expire(systemReason);
             Booking saved = bookings.save(booking, SYSTEM_ACTOR);
-            if (saved.status() == BookingStatus.CANCELLED) {
-                // notification-service cancela los recordatorios que quedaran pendientes
-                publish(BookingEvent.Type.CANCELLED, saved, null, systemReason.name());
-            }
+            // notification-service cancela los recordatorios que quedaran pendientes
+            publish(BookingEvent.Type.CANCELLED, saved, null, systemReason.name());
         }
         return expired.size();
+    }
+
+    @Override
+    public BookingView markUnattended(long bookingId) {
+        // con la agenda bloqueada, como el resto de cambios de una reserva
+        bookings.lockSchedule();
+        Booking booking = requireBooking(bookingId);
+        booking.markUnattended(clock.instant(), settings.expiryGrace());
+        return view(bookings.save(booking, SYSTEM_ACTOR), null, SERVICE);
     }
 
     // ------------------------------------------------------------------ reglas internas

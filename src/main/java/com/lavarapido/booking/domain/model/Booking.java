@@ -120,24 +120,30 @@ public class Booking {
         this.status = target;
     }
 
-    /**
-     * Ya paso la hora de fin mas el margen y nunca se inicio: se cierra sola para que no quede
-     * "activa" para siempre (una confirmada no llego el cliente; una programada nunca se confirmo).
-     */
+    /** Ya paso la hora de fin mas el margen y nunca se inicio. */
     public boolean isExpired(Instant now, Duration grace) {
         return status.isChangeable() && !now.isBefore(scheduledEnd.plus(grace));
     }
 
-    /**
-     * Cierre automatico de una reserva vencida: la confirmada queda NO_SHOW (el pago, si lo hubo,
-     * lo revisa el admin) y la programada queda CANCELLED con el motivo del sistema.
-     */
+    /** Una programada que vencio sin confirmarse: la cancela el sistema con su motivo. */
     public void expire(CancellationReason systemReason) {
-        if (status == BookingStatus.CONFIRMED) {
-            moveTo(BookingStatus.NO_SHOW);
-        } else {
-            cancel(systemReason);
+        if (status != BookingStatus.SCHEDULED) {
+            throw new ConflictException("INVALID_STATUS_TRANSITION", "Only a scheduled booking expires by itself");
         }
+        cancel(systemReason);
+    }
+
+    /**
+     * El sistema la deja NO_SHOW: confirmada, vencida y sin operario asignado (eso lo sabe
+     * operations-service, que es quien la pide). Con operario no se decide sola: el operario pudo
+     * atenderla y olvidar registrarla, asi que la resuelve el admin.
+     */
+    public void markUnattended(Instant now, Duration grace) {
+        if (status != BookingStatus.CONFIRMED || !isExpired(now, grace)) {
+            throw new ConflictException("BOOKING_NOT_EXPIRED",
+                    "Only a confirmed booking past its end and margin can be closed as not attended");
+        }
+        moveTo(BookingStatus.NO_SHOW);
     }
 
     /** El cliente solo puede cambiarla antes de la hora de inicio y si no ha empezado. */
