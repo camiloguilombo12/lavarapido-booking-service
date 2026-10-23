@@ -187,6 +187,22 @@ public class BookingService implements BookingUseCase {
         if (status == BookingStatus.CANCELLED) {
             return cancel(bookingId, reasonCode, caller);
         }
+        BookingView view = moveStatus(bookingId, status, caller);
+        // A-11: el cliente se entera del cambio que hizo el administrador
+        Booking saved = view.booking();
+        Long customer = customerUserOf(view.vehicle(), caller);
+        if (status == BookingStatus.CONFIRMED) {
+            publish(BookingEvent.Type.CONFIRMED, saved, customer, null);
+        } else {
+            events.publish(new BookingEvent(BookingEvent.Type.STATUS_CHANGED, saved.id(), saved.code(), customer,
+                    saved.customerVehicleId(), saved.scheduledStart(), saved.serviceBayId(), null, clock.instant(),
+                    null, status.name()));
+        }
+        return view;
+    }
+
+    /** Mueve el estado sin avisar (el avance del operario lo avisa operations-service). */
+    private BookingView moveStatus(long bookingId, BookingStatus status, Caller caller) {
         Booking booking = requireBooking(bookingId);
         booking.moveTo(status);
         Booking saved = bookings.save(booking, caller.userId());

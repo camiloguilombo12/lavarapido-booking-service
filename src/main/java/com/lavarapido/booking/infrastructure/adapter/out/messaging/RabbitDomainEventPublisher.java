@@ -96,6 +96,10 @@ class RabbitDomainEventPublisher implements DomainEventPublisher {
         if (event.reason() != null) {
             payload.put("reason", event.reason());
         }
+        // A-11: estado nuevo de la reserva (BookingStatusChanged)
+        if (event.status() != null) {
+            payload.put("status", event.status());
+        }
         return payload;
     }
 }

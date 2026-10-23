@@ -11,18 +11,28 @@ import java.time.Instant;
  */
 public record BookingEvent(Type type, long bookingId, String bookingCode, Long customerUserId,
                            long customerVehicleId, Instant scheduledStart, Short serviceBayId,
-                           String reason, Instant occurredAt, Integer preferredOperatorId) {
+                           String reason, Instant occurredAt, Integer preferredOperatorId, String status) {
+
+    /** Con operario preferido (al crear la reserva). */
+    public BookingEvent(Type type, long bookingId, String bookingCode, Long customerUserId, long customerVehicleId,
+                        Instant scheduledStart, Short serviceBayId, String reason, Instant occurredAt,
+                        Integer preferredOperatorId) {
+        this(type, bookingId, bookingCode, customerUserId, customerVehicleId, scheduledStart, serviceBayId, reason,
+                occurredAt, preferredOperatorId, null);
+    }
 
     /** Sin operario preferido (reprogramación, cancelación). */
     public BookingEvent(Type type, long bookingId, String bookingCode, Long customerUserId, long customerVehicleId,
                         Instant scheduledStart, Short serviceBayId, String reason, Instant occurredAt) {
         this(type, bookingId, bookingCode, customerUserId, customerVehicleId, scheduledStart, serviceBayId, reason,
-                occurredAt, null);
+                occurredAt, null, null);
     }
 
     public enum Type {
         CONFIRMED("BookingConfirmed", "booking.confirmed"),
-        CANCELLED("BookingCancelled", "booking.cancelled");
+        CANCELLED("BookingCancelled", "booking.cancelled"),
+        // A-11: el administrador movió la reserva a en curso, completada o no asistió
+        STATUS_CHANGED("BookingStatusChanged", "booking.status_changed");
 
         private final String eventName;
         private final String routingKey;

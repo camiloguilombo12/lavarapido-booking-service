@@ -235,6 +235,33 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("A-11: cuando el admin cambia el estado, sale el evento para avisarle al cliente")
+    void adminStatusChangeNotifiesTheCustomer() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of(5L, new VehicleSnapshot(5L, "ABC123", "ABC-123",
+                "SUV", SUV, "Camioneta SUV", "Mazda", "CX-5", 7L)));
+
+        service.changeStatus(1L, BookingStatus.IN_PROGRESS, null, ADMIN);
+
+        ArgumentCaptor<BookingEvent> event = ArgumentCaptor.forClass(BookingEvent.class);
+        verify(events).publish(event.capture());
+        assertEquals(BookingEvent.Type.STATUS_CHANGED, event.getValue().type());
+        assertEquals("IN_PROGRESS", event.getValue().status());
+        assertEquals(7L, event.getValue().customerUserId());
+    }
+
+    @Test
+    @DisplayName("A-11: el avance del operario no publica este evento (operations ya avisa)")
+    void operatorAdvanceDoesNotPublishTheStatusEvent() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-09-30T15:10:00Z")));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of());
+
+        service.operatorAdvance(1L, BookingStatus.IN_PROGRESS, new Caller(30L, false));
+
+        verify(events, never()).publish(any());
+    }
+
+    @Test
     @DisplayName("el admin ve el dueño del vehiculo en su listado")
     void adminListHasOwners() {
         given(bookings.findStartingBetween(any(), any(), any())).willReturn(List.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
