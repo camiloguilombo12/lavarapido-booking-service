@@ -126,6 +126,17 @@ class BookingApiWebTest {
     }
 
     @Test
+    void theCustomerCancelSendsTheChosenReason() throws Exception {
+        // A-20: antes el controlador descartaba reasonCode y siempre mandaba null
+        given(bookings.cancel(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq("SCHEDULE_CONFLICT"), any()))
+                .willThrow(new com.lavarapido.booking.domain.exception.InvalidValueException("CHOSEN", "llego el motivo"));
+
+        mvc.perform(post("/api/v1/bookings/7/cancel").header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reasonCode\":\"SCHEDULE_CONFLICT\"}"))
+                .andExpect(jsonPath("$.code").value("CHOSEN"));
+    }
+
+    @Test
     void operatorRoutesAreForOperatorsAndAdmins() throws Exception {
         given(bookings.operatorDay(any(), any(), any())).willReturn(List.of());
         mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR"))

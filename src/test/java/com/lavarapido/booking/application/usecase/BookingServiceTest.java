@@ -210,11 +210,28 @@ class BookingServiceTest {
         given(bookings.findCancellationReason("CUSTOMER_REQUEST")).willReturn(Optional.of(
                 new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false)));
 
-        BookingView view = service.cancel(1L, "SHOP_ISSUE", CLIENT);
+        BookingView view = service.cancel(1L, null, CLIENT);
 
         assertEquals(BookingStatus.CANCELLED, view.booking().status());
         assertEquals("CUSTOMER_REQUEST", view.booking().cancellationReason().code());
         verify(events).publish(any());
+    }
+
+    @Test
+    @DisplayName("A-20: el cliente cancela con el motivo que eligió, si es de su lado")
+    void customerCancelsWithTheChosenReason() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+        given(customers.ownVehicles()).willReturn(List.of(MY_SUV));
+        given(bookings.findCancellationReason("SCHEDULE_CONFLICT")).willReturn(Optional.of(
+                new CancellationReason((short) 2, "SCHEDULE_CONFLICT", "El cliente no puede a esa hora", false)));
+        given(bookings.findCancellationReason("LATE_ARRIVAL")).willReturn(Optional.of(
+                new CancellationReason((short) 5, "LATE_ARRIVAL", "El cliente llego tarde", true)));
+
+        var error = assertThrows(InvalidValueException.class, () -> service.cancel(1L, "LATE_ARRIVAL", CLIENT));
+        assertEquals("INVALID_CANCELLATION_REASON", error.code());
+
+        BookingView view = service.cancel(1L, "SCHEDULE_CONFLICT", CLIENT);
+        assertEquals("SCHEDULE_CONFLICT", view.booking().cancellationReason().code());
     }
 
     @Test

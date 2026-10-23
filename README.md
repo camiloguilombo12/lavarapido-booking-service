@@ -40,7 +40,7 @@ Cliente (con su token):
 | GET | `/api/v1/bookings/me` | Mis reservas |
 | GET | `/api/v1/bookings/{id}` | Una reserva propia (404 si es de otro) |
 | PUT | `/api/v1/bookings/{id}` | Reprogramar (RF-007, solo antes de empezar) |
-| POST | `/api/v1/bookings/{id}/cancel` | Cancelar |
+| POST | `/api/v1/bookings/{id}/cancel` | Cancelar; cuerpo opcional `{reasonCode}`: el cliente elige CUSTOMER_REQUEST (por defecto), SCHEDULE_CONFLICT, VEHICLE_ISSUE u OTHER; otro motivo responde 400 `INVALID_CANCELLATION_REASON` (A-20) |
 
 Admin (`/api/v1/admin/**`, exige rol `ADMIN` en el token):
 
