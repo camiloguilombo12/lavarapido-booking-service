@@ -69,6 +69,7 @@ Publica en el exchange `carwash.events` (solo con `MESSAGING_ENABLED=true`):
 | Reserva confirmada | `booking.confirmed` |
 | Reserva modificada | `booking.modified` |
 | Reserva cancelada | `booking.cancelled` |
+| El administrador la pasó a en curso, completada o no asistió (`status` en el payload, A-11) | `booking.status_changed` |
 
 El evento sale **después** del commit de la transacción (cross-cutting.md §6).
 Sin broker el servicio funciona igual: los eventos solo quedan en el log.
