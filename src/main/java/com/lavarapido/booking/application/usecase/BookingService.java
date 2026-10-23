@@ -167,8 +167,13 @@ public class BookingService implements BookingUseCase {
     public BookingView cancel(long bookingId, String reasonCode, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         requireChangeableBy(booking, caller);
-        String code = caller.admin() && reasonCode != null && !reasonCode.isBlank() ? reasonCode : CUSTOMER_CANCEL_REASON;
-        booking.cancel(requireReason(code));
+        // A-20: el motivo elegido (sin motivo, CUSTOMER_REQUEST); quién puede elegir cada uno lo decide el dominio
+        String code = reasonCode != null && !reasonCode.isBlank() ? reasonCode.strip() : CUSTOMER_CANCEL_REASON;
+        CancellationReason reason = requireReason(code);
+        if (!reason.selectableBy(caller.admin())) {
+            throw new InvalidValueException("INVALID_CANCELLATION_REASON", "This cancellation reason cannot be chosen here");
+        }
+        booking.cancel(reason);
         Booking saved = bookings.save(booking, caller.userId());
 
         VehicleSnapshot vehicle = vehicleOf(saved, caller);

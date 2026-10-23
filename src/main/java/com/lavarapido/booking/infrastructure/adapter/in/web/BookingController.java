@@ -85,10 +85,14 @@ class BookingController {
         return BookingResponse.from(bookings.reschedule(id, request.toRequest(), AuthenticatedUser.customer(jwt)), false);
     }
 
-    /** El cliente cancela con el motivo CUSTOMER_REQUEST; el cuerpo es opcional. */
+    /**
+     * El cliente cancela con el motivo que elige (A-20: solo los de su lado); el cuerpo es opcional y
+     * sin motivo queda CUSTOMER_REQUEST.
+     */
     @PostMapping("/{id}/cancel")
     BookingResponse cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable long id,
                            @RequestBody(required = false) CancelRequest request) {
-        return BookingResponse.from(bookings.cancel(id, null, AuthenticatedUser.customer(jwt)), false);
+        String reasonCode = request == null ? null : request.reasonCode();
+        return BookingResponse.from(bookings.cancel(id, reasonCode, AuthenticatedUser.customer(jwt)), false);
     }
 }
