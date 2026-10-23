@@ -264,10 +264,10 @@ public class BookingService implements BookingUseCase {
                 .toList();
     }
 
-    // ------------------------------------------------------------------ operario (TEMPORAL)
-    // Mientras no exista operations-service, el operario trabaja sobre las reservas del dia.
-    // El rol OPERATOR ya lo exigio SecurityConfig; aqui se le trata como personal del lavadero
-    // (ve todas las reservas) pero solo puede mover el estado hacia adelante.
+    // ------------------------------------------------------------------ operario
+    // Solo llega operations-service (rol OPERATOR/ADMIN + llave interna, E-01), que filtra las
+    // reservas asignadas al operario. Aqui se le trata como personal del lavadero (lectura) y solo
+    // puede mover el estado hacia adelante.
 
     @Override
     @Transactional(readOnly = true)
@@ -285,7 +285,16 @@ public class BookingService implements BookingUseCase {
         if (status != BookingStatus.IN_PROGRESS && status != BookingStatus.COMPLETED) {
             throw new InvalidValueException("INVALID_STATUS", "An operator can only start or complete a booking");
         }
-        return changeStatus(bookingId, status, null, staff(caller));
+        // solo llega desde operations-service (llave interna, E-01), que ya validó que la reserva
+        // está asignada a este operario; aquí se cuida la hora de inicio (RN-EXEC-01)
+        Booking booking = requireBooking(bookingId);
+        if (status == BookingStatus.IN_PROGRESS) {
+            booking.startByOperator(clock.instant());
+        } else {
+            booking.moveTo(status);
+        }
+        Booking saved = bookings.save(booking, caller.userId());
+        return view(saved, vehicleOf(saved, staff(caller)), staff(caller));
     }
 
     private static Caller staff(Caller caller) {

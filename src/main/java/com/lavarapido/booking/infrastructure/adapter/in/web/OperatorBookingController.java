@@ -19,9 +19,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * TEMPORAL: pantalla del operario mientras operations-service no existe. Roles OPERATOR o ADMIN
- * (SecurityConfig). Cuando llegue la asignacion real, esto se reemplaza por los endpoints de
- * operations-service y se borra.
+ * Reservas para el flujo del operario. Solo las usa operations-service (que valida que la reserva
+ * esté asignada al operario y la regla de los 15 minutos): exigen el rol OPERATOR o ADMIN y la llave
+ * interna X-Internal-Key (SecurityConfig, E-01). El gateway no publica estas rutas.
  */
 @RestController
 @RequestMapping("/api/v1/operator/bookings")

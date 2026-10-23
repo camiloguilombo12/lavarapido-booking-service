@@ -63,6 +63,20 @@ class BookingTest {
     }
 
     @Test
+    @DisplayName("E-01, RN-EXEC-01 / INV-EXEC-004: el operario inicia desde 15 minutos antes, no antes")
+    void operatorStartsFromFifteenMinutesBefore() {
+        Booking early = confirmed();
+        ConflictException tooEarly = assertThrows(ConflictException.class,
+                () -> early.startByOperator(START.minus(Duration.ofMinutes(16))));
+        assertEquals("SERVICE_TOO_EARLY", tooEarly.code());
+        assertEquals(BookingStatus.CONFIRMED, early.status());
+
+        Booking onTime = confirmed();
+        onTime.startByOperator(START.minus(Duration.ofMinutes(15)));
+        assertEquals(BookingStatus.IN_PROGRESS, onTime.status());
+    }
+
+    @Test
     @DisplayName("RF-007: no se cancela ni se cambia despues de empezar")
     void cannotChangeAfterStarting() {
         Booking booking = confirmed();
