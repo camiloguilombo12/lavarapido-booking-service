@@ -27,6 +27,7 @@
     <include file="db/changelog/022-booking-catalog-loyalty-points.sql"/>
     <include file="db/changelog/024-booking-revert-bay-operator.sql"/>
     <include file="db/changelog/032-booking-establishment-business-data.sql"/>
+    <include file="db/changelog/043-booking-service-loyalty-points.sql"/>
     <include file="db/changelog/seed/103-seed-catalog.sql"/>
     <include file="db/changelog/seed/104-seed-booking-catalogs.sql"/>
     <include file="db/changelog/seed/109-seed-establishment-schedule.sql"/>

@@ -181,6 +181,10 @@ class BookingPersistenceAdapter implements BookingRepository {
             } else if (entity.getDeletedAt() == null && entity.getQuantity() == line.quantity()) {
                 continue;
             }
+            // A-09: los puntos se congelan la primera vez; una línea que ya los tiene no cambia
+            if (entity.getLoyaltyPoints() == null) {
+                entity.setLoyaltyPoints(line.loyaltyPoints());
+            }
             entity.setQuantity(line.quantity());
             entity.setDeletedAt(null);
             entity.setDeletedBy(null);
@@ -224,13 +228,15 @@ class BookingPersistenceAdapter implements BookingRepository {
         return result;
     }
 
-    private static BookingLine toLine(BookingServiceJpaEntity line, ServicePriceJpaEntity price,
-                                      Map<Integer, ServiceJpaEntity> serviceById) {
+    static BookingLine toLine(BookingServiceJpaEntity line, ServicePriceJpaEntity price,
+                              Map<Integer, ServiceJpaEntity> serviceById) {
         ServiceJpaEntity service = serviceById.get(price.getServiceId());
+        // A-09: los puntos congelados de la línea; solo si faltan, los vigentes del catálogo
+        int points = line.getLoyaltyPoints() != null ? line.getLoyaltyPoints()
+                : service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints();
         return new BookingLine(price.getId(), price.getServiceId(), service == null ? null : service.getCode(),
                 service == null ? null : service.getName(), price.getPrice(), price.getEstimatedMinutes(),
-                line.getQuantity(), line.getId(),
-                service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints());
+                line.getQuantity(), line.getId(), points);
     }
 
     private static CancellationReason toReason(CancellationReasonJpaEntity entity) {

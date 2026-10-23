@@ -32,6 +32,10 @@ public class BookingServiceJpaEntity {
     @Column(name = "quantity")
     private Short quantity;
 
+    // A-09: puntos de fidelización que valía el servicio al reservar (null en filas viejas sin migrar)
+    @Column(name = "loyalty_points")
+    private Integer loyaltyPoints;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -126,5 +130,13 @@ public class BookingServiceJpaEntity {
 
     public Integer getRowVersion() {
         return rowVersion;
+    }
+
+    public Integer getLoyaltyPoints() {
+        return loyaltyPoints;
+    }
+
+    public void setLoyaltyPoints(Integer loyaltyPoints) {
+        this.loyaltyPoints = loyaltyPoints;
     }
 }

@@ -98,6 +98,7 @@ servicios, una tabla de changelog por servicio):
 - `018-booking-adr-010.sql` — estado de bahía y pausa del día
 - `seed/103-seed-catalog.sql` — categorías, servicios y tarifas
 - `seed/104-seed-booking-catalogs.sql` — estados y motivos de cancelación
+- `043-booking-service-loyalty-points.sql` — congela los puntos de fidelización de cada línea al reservar (A-09); las líneas existentes toman los puntos vigentes. Rollback: quita la columna
 - `seed/109-seed-establishment-schedule.sql` — sede, semana y bahías
 
 `DATABASECHANGELOG_BOOKING`. Si el esquema cambió y la base quedó vieja, lo más

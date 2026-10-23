@@ -7,10 +7,9 @@ import java.math.BigDecimal;
  * precio salen de esa fila, que nunca cambia (INV-BOOK-008). lineId es el booking_service_id: null
  * mientras la linea no se ha guardado. operations-service lo usa para la ejecucion de cada linea.
  *
- * loyaltyPoints es los puntos de fidelizacion que paga este servicio (catalog.service.loyalty_points),
- * leidos en el momento de armar la linea; a diferencia del precio no hay una fila historica para
- * congelarlos, asi que si el admin cambia los puntos de un servicio despues, las reservas viejas que
- * todavia no se han pagado toman el valor vigente cuando payment-service los acredite.
+ * loyaltyPoints es los puntos de fidelizacion que paga este servicio, leidos de
+ * catalog.service.loyalty_points al armar la linea y congelados en booking.booking_service.loyalty_points
+ * (A-09, changelog 043): si el admin cambia los puntos del servicio despues, la reserva conserva los suyos.
  */
 public record BookingLine(long servicePriceId, int serviceId, String serviceCode, String serviceName,
                           BigDecimal price, short estimatedMinutes, short quantity, Long lineId, int loyaltyPoints) {
