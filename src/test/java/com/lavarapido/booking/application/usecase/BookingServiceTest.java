@@ -249,7 +249,8 @@ class BookingServiceTest {
     @Test
     @DisplayName("TEMPORAL: el operario empieza una reserva pero no puede marcar no-show")
     void operatorOnlyMovesForward() {
-        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+        // a las 15:00Z, una reserva de las 15:10Z ya se puede iniciar (15 minutos antes)
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-09-30T15:10:00Z")));
         given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of());
 
         BookingView view = service.operatorAdvance(1L, BookingStatus.IN_PROGRESS, new Caller(30L, false));
@@ -257,6 +258,18 @@ class BookingServiceTest {
         assertEquals(BookingStatus.IN_PROGRESS, view.booking().status());
         assertThrows(InvalidValueException.class,
                 () -> service.operatorAdvance(1L, BookingStatus.NO_SHOW, new Caller(30L, false)));
+    }
+
+    @Test
+    @DisplayName("E-01: el operario no inicia una reserva de otro dia u otra hora")
+    void operatorCannotStartTooEarly() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+
+        var error = assertThrows(com.lavarapido.booking.domain.exception.ConflictException.class,
+                () -> service.operatorAdvance(1L, BookingStatus.IN_PROGRESS, new Caller(30L, false)));
+
+        assertEquals("SERVICE_TOO_EARLY", error.code());
+        verify(bookings, never()).save(any(), anyLong());
     }
 
     @Test

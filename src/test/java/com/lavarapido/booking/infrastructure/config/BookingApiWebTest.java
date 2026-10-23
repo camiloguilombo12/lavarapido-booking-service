@@ -27,6 +27,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -127,14 +128,33 @@ class BookingApiWebTest {
     @Test
     void operatorRoutesAreForOperatorsAndAdmins() throws Exception {
         given(bookings.operatorDay(any(), any(), any())).willReturn(List.of());
-        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR")))
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR"))
+                        .header("X-Internal-Key", INTERNAL_KEY))
                 .andExpect(status().isOk());
-        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(1L, "ADMIN")))
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(1L, "ADMIN"))
+                        .header("X-Internal-Key", INTERNAL_KEY))
                 .andExpect(status().isOk());
-        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(7L, "CLIENT")))
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(7L, "CLIENT"))
+                        .header("X-Internal-Key", INTERNAL_KEY))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/admin/bookings").header("Authorization", token(30L, "OPERATOR")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void operatorRoutesOnlyComeThroughOperationsService() throws Exception {
+        // E-01: un operario con su token, pero sin la llave interna (no viene de operations), no lee
+        // ni mueve reservas de booking directamente: la asignacion la valida operations-service
+        mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/operator/bookings/5").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/v1/operator/bookings/5/status").header("Authorization", token(30L, "OPERATOR"))
+                        .header("X-Internal-Key", "otra")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"IN_PROGRESS\"}"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(bookings);
     }
 
     @Test

@@ -20,6 +20,9 @@ import java.util.Set;
  */
 public class Booking {
 
+    /** Margen con el que el operario puede empezar antes de la hora (RN-EXEC-01). */
+    public static final Duration OPERATOR_EARLY_START = Duration.ofMinutes(15);
+
     private static final int MAX_NOTES = 300;
 
     private long id;
@@ -118,6 +121,19 @@ public class Booking {
                     "A booking cannot go from " + status + " to " + target);
         }
         this.status = target;
+    }
+
+    /**
+     * El operario inicia el servicio (RN-EXEC-01, INV-EXEC-004): desde 15 minutos antes de la hora
+     * de la reserva, no antes. Que la reserva sea suya lo valida operations-service, que es el
+     * único que llega aquí (E-01).
+     */
+    public void startByOperator(Instant now) {
+        if (now.isBefore(scheduledStart.minus(OPERATOR_EARLY_START))) {
+            throw new ConflictException("SERVICE_TOO_EARLY", "The service can start from "
+                    + OPERATOR_EARLY_START.toMinutes() + " minutes before the booking time");
+        }
+        moveTo(BookingStatus.IN_PROGRESS);
     }
 
     /** Ya paso la hora de fin mas el margen y nunca se inicio. */
