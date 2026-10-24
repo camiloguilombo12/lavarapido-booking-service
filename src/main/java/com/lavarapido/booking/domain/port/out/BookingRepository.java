@@ -33,6 +33,9 @@ public interface BookingRepository {
 
     boolean hasUpcomingOnBay(short bayId, Instant from);
 
+    /** Reservas activas del vehiculo: en curso, o programadas/confirmadas que terminan despues de now. */
+    long countActiveForVehicle(long customerVehicleId, Instant now);
+
     /** Reservas sin iniciar (SCHEDULED o CONFIRMED) que terminaron antes de esa hora. */
     List<Booking> findNotStartedEndingBefore(Instant before);
 

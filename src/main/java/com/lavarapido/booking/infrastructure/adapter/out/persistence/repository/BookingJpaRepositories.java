@@ -61,6 +61,14 @@ public final class BookingJpaRepositories {
                   AND b.statusId IN (1, 2, 3) AND b.scheduledEnd > :from
                 """)
         boolean existsUpcomingOnBay(@Param("bayId") short bayId, @Param("from") Instant from);
+
+        /** BIZ-08: del vehiculo, las en curso (3) y las SCHEDULED/CONFIRMED (1, 2) que terminan despues de :now. */
+        @Query("""
+                SELECT COUNT(b) FROM BookingJpaEntity b
+                WHERE b.deletedAt IS NULL AND b.customerVehicleId = :vehicleId
+                  AND (b.statusId = 3 OR (b.statusId IN (1, 2) AND b.scheduledEnd > :now))
+                """)
+        long countActiveForVehicle(@Param("vehicleId") long vehicleId, @Param("now") Instant now);
     }
 
     public interface Lines extends JpaRepository<BookingServiceJpaEntity, Long> {

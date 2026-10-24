@@ -261,6 +261,15 @@ public class BookingService implements BookingUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public long activeBookingsOf(long customerVehicleId) {
+        if (customerVehicleId <= 0) {
+            throw new InvalidValueException("INVALID_VEHICLE", "customerVehicleId must be greater than zero");
+        }
+        return bookings.countActiveForVehicle(customerVehicleId, clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public DaySummary daySummary(LocalDate date, Caller caller) {
         requireAdmin(caller);
         LocalDate day = date == null ? today() : date;

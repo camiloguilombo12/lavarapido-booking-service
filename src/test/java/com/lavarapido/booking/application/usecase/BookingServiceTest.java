@@ -330,6 +330,15 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("BIZ-08: cuenta las reservas activas del vehículo a la hora actual")
+    void countsTheActiveBookingsOfAVehicle() {
+        given(bookings.countActiveForVehicle(5L, NOW)).willReturn(2L);
+
+        assertEquals(2L, service.activeBookingsOf(5L));
+        assertThrows(InvalidValueException.class, () -> service.activeBookingsOf(0L));
+    }
+
+    @Test
     @DisplayName("TEMPORAL: el operario ve las reservas del dia sin las canceladas")
     void operatorSeesTheDay() {
         Booking cancelled = existing(2L, 5L, "2026-10-01T16:00:00Z");
