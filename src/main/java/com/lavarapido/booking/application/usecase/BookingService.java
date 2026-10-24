@@ -188,7 +188,11 @@ public class BookingService implements BookingUseCase {
         Booking saved = bookings.save(booking, caller.userId());
 
         VehicleSnapshot vehicle = vehicleOf(saved, caller);
-        publish(BookingEvent.Type.CANCELLED, saved, customerUserOf(vehicle, caller), saved.cancellationReason().name());
+        // A-20 / OPS-10: el texto del motivo y tambien su codigo
+        CancellationReason chosen = saved.cancellationReason();
+        events.publish(new BookingEvent(BookingEvent.Type.CANCELLED, saved.id(), saved.code(),
+                customerUserOf(vehicle, caller), saved.customerVehicleId(), saved.scheduledStart(),
+                saved.serviceBayId(), chosen.name(), clock.instant(), null, null, chosen.code()));
         return view(saved, vehicle, caller);
     }
 
