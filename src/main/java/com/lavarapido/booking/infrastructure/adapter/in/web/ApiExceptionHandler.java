@@ -4,6 +4,7 @@ import com.lavarapido.booking.domain.exception.ConflictException;
 import com.lavarapido.booking.domain.exception.DependencyUnavailableException;
 import com.lavarapido.booking.domain.exception.DomainException;
 import com.lavarapido.booking.domain.exception.NotFoundException;
+import com.lavarapido.booking.domain.exception.ScheduleConflictException;
 import com.lavarapido.booking.domain.exception.SlotUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +47,18 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage());
         problem.setProperty("alternatives", exception.alternatives().stream().map(HOUR::format).toList());
         problem.setProperty("reason", exception.reason().name());
+        return problem;
+    }
+
+    /**
+     * BIZ-10: el cambio de horario, de excepcion o de bahia deja reservas por fuera. Van cuantas son
+     * (conflictingBookings) y los codigos de las primeras (bookingCodes) para que el admin las ubique.
+     */
+    @ExceptionHandler(ScheduleConflictException.class)
+    ProblemDetail handleScheduleConflict(ScheduleConflictException exception) {
+        ProblemDetail problem = problem(HttpStatus.CONFLICT, exception.code(), exception.getMessage());
+        problem.setProperty("conflictingBookings", exception.conflictingBookings());
+        problem.setProperty("bookingCodes", exception.bookingCodes());
         return problem;
     }
 

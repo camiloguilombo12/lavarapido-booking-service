@@ -3,8 +3,11 @@ package com.lavarapido.booking.application.usecase;
 import com.lavarapido.booking.domain.exception.ConflictException;
 import com.lavarapido.booking.domain.exception.InvalidValueException;
 import com.lavarapido.booking.domain.exception.NotFoundException;
+import com.lavarapido.booking.domain.exception.ScheduleConflictException;
 import com.lavarapido.booking.domain.model.BayStatus;
+import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BusinessHour;
+import com.lavarapido.booking.domain.model.DayWindow;
 import com.lavarapido.booking.domain.model.Establishment;
 import com.lavarapido.booking.domain.model.HoursException;
 import com.lavarapido.booking.domain.model.ScheduleEntityType;
@@ -14,16 +17,22 @@ import com.lavarapido.booking.domain.port.in.ScheduleUseCase;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.ScheduleRepository;
+import com.lavarapido.booking.domain.service.AvailabilityPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /** Horario semanal, excepciones, bahias y datos de la sede ("Horarios y bahias" del admin). */
@@ -68,6 +77,15 @@ public class ScheduleService implements ScheduleUseCase {
                 || hours.stream().map(BusinessHour::dayOfWeek).distinct().count() != 7) {
             throw new InvalidValueException("INVALID_WEEK", "Send the 7 days of the week, one time each");
         }
+        // BIZ-10: las reservas que vienen tienen que seguir cabiendo; un dia con excepcion no cambia
+        bookings.lockSchedule();
+        Map<Short, BusinessHour> week = hours.stream()
+                .collect(Collectors.toMap(BusinessHour::dayOfWeek, Function.identity()));
+        Set<LocalDate> withException = schedule.findExceptionsFrom(today()).stream()
+                .map(HoursException::date)
+                .collect(Collectors.toSet());
+        requireBookingsFit(date -> !withException.contains(date),
+                date -> Optional.ofNullable(week.get(dayOf(date))).flatMap(BusinessHour::window));
         schedule.saveBusinessHours(hours, actor);
         schedule.recordHistory(ScheduleEntityType.WEEK, "Horario semanal actualizado", null, actor);
         return businessHours();
@@ -85,6 +103,9 @@ public class ScheduleService implements ScheduleUseCase {
         if (schedule.findExceptionByDate(exception.date()).isPresent()) {
             throw new ConflictException("EXCEPTION_DATE_TAKEN", "That date already has an exception");
         }
+        // BIZ-10: un festivo o una jornada mas corta no puede dejar por fuera reservas de ese dia
+        bookings.lockSchedule();
+        requireBookingsFit(exception.date()::equals, date -> exception.window());
         int id = schedule.saveException(exception, actor);
         schedule.recordHistory(ScheduleEntityType.EXCEPTION, "Excepción agregada", exception.reason(), actor);
         return requireException(id);
@@ -92,13 +113,17 @@ public class ScheduleService implements ScheduleUseCase {
 
     @Override
     public HoursException updateException(int exceptionId, HoursException exception, long actor) {
-        requireException(exceptionId);
+        HoursException before = requireException(exceptionId);
         requireNotPast(exception.date());
         schedule.findExceptionByDate(exception.date())
                 .filter(other -> other.id() != exceptionId)
                 .ifPresent(other -> {
                     throw new ConflictException("EXCEPTION_DATE_TAKEN", "That date already has an exception");
                 });
+        // BIZ-10: el dia nuevo queda con este horario; si la fecha cambio, el dia viejo vuelve al semanal
+        bookings.lockSchedule();
+        requireBookingsFit(date -> date.equals(exception.date()) || date.equals(before.date()),
+                date -> date.equals(exception.date()) ? exception.window() : weeklyWindow(date));
         HoursException changed = new HoursException(exceptionId, exception.date(), exception.closed(),
                 exception.opensAt(), exception.closesAt(), exception.reason());
         schedule.saveException(changed, actor);
@@ -109,6 +134,9 @@ public class ScheduleService implements ScheduleUseCase {
     @Override
     public void deleteException(int exceptionId, long actor) {
         HoursException target = requireException(exceptionId);
+        // BIZ-10: sin la excepcion el dia vuelve al horario semanal (una jornada extendida se pierde)
+        bookings.lockSchedule();
+        requireBookingsFit(target.date()::equals, this::weeklyWindow);
         schedule.deleteException(exceptionId, actor, clock.instant());
         schedule.recordHistory(ScheduleEntityType.EXCEPTION, "Excepción eliminada", target.reason(), actor);
     }
@@ -137,6 +165,17 @@ public class ScheduleService implements ScheduleUseCase {
         String cleanName = ServiceBay.requireName(name);
         if (bays.existsName(cleanName, bayId)) {
             throw new ConflictException("BAY_NAME_TAKEN", "Another bay already has that name");
+        }
+        // BIZ-10: una bahia que deja de recibir reservas (mantenimiento, inactiva) no puede tener reservas por delante
+        if (before.status().acceptsBookings() && !status.acceptsBookings()) {
+            bookings.lockSchedule();
+            List<String> onBay = bookings.findActiveEndingAfter(clock.instant()).stream()
+                    .filter(booking -> booking.serviceBayId() != null && booking.serviceBayId() == bayId)
+                    .map(Booking::code)
+                    .toList();
+            if (!onBay.isEmpty()) {
+                throw new ScheduleConflictException(onBay);
+            }
         }
         bays.update(bayId, cleanName, status, actor);
         ServiceBay after = requireBay(bayId);
@@ -201,6 +240,42 @@ public class ScheduleService implements ScheduleUseCase {
         return schedule.findException(exceptionId)
                 .orElseThrow(() -> new NotFoundException("EXCEPTION_NOT_FOUND",
                         "Exception " + exceptionId + " does not exist"));
+    }
+
+    /**
+     * BIZ-10: las reservas activas de los dias afectados tienen que caber en el horario nuevo de ese
+     * dia; si alguna queda por fuera, 409 SCHEDULE_CONFLICTS_BOOKINGS con cuantas son. Se llama con la
+     * agenda bloqueada, asi nadie reserva con el horario viejo mientras tanto.
+     */
+    private void requireBookingsFit(Predicate<LocalDate> affects, Function<LocalDate, Optional<DayWindow>> newWindow) {
+        List<String> outside = bookings.findActiveEndingAfter(clock.instant()).stream()
+                .filter(booking -> {
+                    LocalDateTime start = toLocal(booking.scheduledStart());
+                    LocalDate date = start.toLocalDate();
+                    return affects.test(date)
+                            && !AvailabilityPolicy.fits(date, newWindow.apply(date), start, toLocal(booking.scheduledEnd()));
+                })
+                .map(Booking::code)
+                .toList();
+        if (!outside.isEmpty()) {
+            throw new ScheduleConflictException(outside);
+        }
+    }
+
+    /** El horario semanal guardado para ese dia (sin la excepcion). */
+    private Optional<DayWindow> weeklyWindow(LocalDate date) {
+        return schedule.findBusinessHours().stream()
+                .filter(hour -> hour.dayOfWeek() == dayOf(date))
+                .findFirst()
+                .flatMap(BusinessHour::window);
+    }
+
+    private static short dayOf(LocalDate date) {
+        return (short) date.getDayOfWeek().getValue();
+    }
+
+    private LocalDateTime toLocal(Instant instant) {
+        return LocalDateTime.ofInstant(instant, settings.zone());
     }
 
     private void requireNotPast(LocalDate date) {
