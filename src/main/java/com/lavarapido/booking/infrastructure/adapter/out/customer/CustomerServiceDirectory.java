@@ -1,6 +1,10 @@
 package com.lavarapido.booking.infrastructure.adapter.out.customer;
 
+import com.lavarapido.booking.domain.exception.ConflictException;
 import com.lavarapido.booking.domain.exception.DependencyUnavailableException;
+import com.lavarapido.booking.domain.exception.DomainException;
+import com.lavarapido.booking.domain.exception.ForbiddenException;
+import com.lavarapido.booking.domain.exception.InvalidValueException;
 import com.lavarapido.booking.domain.model.VehicleSnapshot;
 import com.lavarapido.booking.domain.port.out.CustomerDirectory;
 import com.lavarapido.booking.infrastructure.config.CorrelationIdFilter;
@@ -19,6 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -35,7 +41,8 @@ import java.util.stream.Collectors;
  * solo ve sus vehiculos y /admin/vehicles exige ADMIN.
  *
  * Si customer no responde, la operacion falla con 503 (CUSTOMER_SERVICE_UNAVAILABLE): no se
- * reserva nada sin validar que el vehiculo es del cliente (INV-BOOK-002).
+ * reserva nada sin validar que el vehiculo es del cliente (INV-BOOK-002). Si responde con un 4xx,
+ * no esta caido: ese rechazo se pasa como 403, 409 o 400 (BIZ-13).
  */
 @Component
 class CustomerServiceDirectory implements CustomerDirectory {
@@ -43,8 +50,10 @@ class CustomerServiceDirectory implements CustomerDirectory {
     private static final Logger log = LoggerFactory.getLogger(CustomerServiceDirectory.class);
     /** Tope de ids por consulta que acepta customer-service. */
     private static final int MAX_IDS = 100;
+    private static final Pattern CODE = Pattern.compile("[A-Z][A-Z0-9_]{1,63}");
 
     private final RestClient client;
+    private final JsonMapper json = JsonMapper.builder().build();
 
     CustomerServiceDirectory(@Value("${app.customer-service.base-url}") String baseUrl,
                              @Value("${app.customer-service.timeout:3s}") Duration timeout) {
@@ -72,7 +81,7 @@ class CustomerServiceDirectory implements CustomerDirectory {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return Optional.empty();
             }
-            throw unavailable(e);
+            throw rejected(e);
         } catch (RestClientException e) {
             throw unavailable(e);
         }
@@ -94,6 +103,8 @@ class CustomerServiceDirectory implements CustomerDirectory {
                 }
             }
             return result;
+        } catch (HttpClientErrorException e) {
+            throw rejected(e);
         } catch (RestClientException e) {
             throw unavailable(e);
         }
@@ -118,6 +129,8 @@ class CustomerServiceDirectory implements CustomerDirectory {
                         result.put(owned.vehicle().id(), owned.vehicle().toSnapshot(owned.ownerUserId()));
                     }
                 }
+            } catch (HttpClientErrorException e) {
+                throw rejected(e);
             } catch (RestClientException e) {
                 throw unavailable(e);
             }
@@ -145,6 +158,36 @@ class CustomerServiceDirectory implements CustomerDirectory {
         log.warn("customer-service call failed: {}", e.getMessage());
         return new DependencyUnavailableException("CUSTOMER_SERVICE_UNAVAILABLE",
                 "Could not validate the vehicle with customer-service");
+    }
+
+    /**
+     * BIZ-13 / E-18: customer contesto, pero rechazo la consulta (un 4xx que no es 404). No esta
+     * caido, asi que no es 503: sale el mismo tipo de error con el code que mando customer (por
+     * ejemplo 409 CUSTOMER_NOT_PROVISIONED), o uno generico si no mando ninguno.
+     */
+    private DomainException rejected(HttpClientErrorException e) {
+        int status = e.getStatusCode().value();
+        log.warn("customer-service rejected the call with {}", status);
+        String code = codeOf(e);
+        return switch (status) {
+            case 401, 403 -> new ForbiddenException("FORBIDDEN", "customer-service denied the request");
+            case 409 -> new ConflictException(code == null ? "CONFLICT" : code, "customer-service rejected the request");
+            // demasiadas peticiones: es pasajero, igual que si no respondiera
+            case 429 -> unavailable(e);
+            default -> new InvalidValueException(code == null ? "VALIDATION_ERROR" : code,
+                    "customer-service rejected the request");
+        };
+    }
+
+    /** El code del ProblemDetail de customer, si viene y tiene la forma de un code (LETRAS_Y_GUIONES). */
+    private String codeOf(HttpClientErrorException e) {
+        try {
+            Map<?, ?> body = json.readValue(e.getResponseBodyAsString(), Map.class);
+            Object code = body == null ? null : body.get("code");
+            return code instanceof String text && CODE.matcher(text).matches() ? text : null;
+        } catch (RuntimeException notJson) {
+            return null;
+        }
     }
 
     /** La respuesta de customer-service (VehicleResponse); solo los campos que se usan. */
