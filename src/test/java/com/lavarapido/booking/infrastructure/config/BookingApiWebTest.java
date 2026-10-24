@@ -137,6 +137,17 @@ class BookingApiWebTest {
     }
 
     @Test
+    void aStaleBookingAnswersConflict() throws Exception {
+        // BIZ-09: otra petición cambió la reserva entre la lectura y el guardado (row_version)
+        given(bookings.cancel(org.mockito.ArgumentMatchers.anyLong(), any(), any())).willThrow(
+                new org.springframework.orm.ObjectOptimisticLockingFailureException(Object.class, 7L));
+
+        mvc.perform(post("/api/v1/bookings/7/cancel").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+    }
+
+    @Test
     void operatorRoutesAreForOperatorsAndAdmins() throws Exception {
         given(bookings.operatorDay(any(), any(), any())).willReturn(List.of());
         mvc.perform(get("/api/v1/operator/bookings").header("Authorization", token(30L, "OPERATOR"))

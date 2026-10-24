@@ -181,6 +181,9 @@ public class BookingService implements BookingUseCase {
         if (!reason.selectableBy(caller.admin())) {
             throw new InvalidValueException("INVALID_CANCELLATION_REASON", "This cancellation reason cannot be chosen here");
         }
+        // E-11: con la agenda bloqueada, como reprogramar; si otro la cambio despues de leerla,
+        // row_version (@Version) no la deja pisar y sale 409
+        bookings.lockSchedule();
         booking.cancel(reason);
         Booking saved = bookings.save(booking, caller.userId());
 
@@ -211,6 +214,8 @@ public class BookingService implements BookingUseCase {
 
     /** Mueve el estado sin avisar (el avance del operario lo avisa operations-service). */
     private BookingView moveStatus(long bookingId, BookingStatus status, Caller caller) {
+        // E-11: se bloquea la agenda antes de leer, asi el cambio se hace sobre la reserva vigente
+        bookings.lockSchedule();
         Booking booking = requireBooking(bookingId);
         booking.moveTo(status);
         Booking saved = bookings.save(booking, caller.userId());
@@ -324,7 +329,9 @@ public class BookingService implements BookingUseCase {
             throw new InvalidValueException("INVALID_STATUS", "An operator can only start or complete a booking");
         }
         // solo llega desde operations-service (llave interna, E-01), que ya validó que la reserva
-        // está asignada a este operario; aquí se cuida la hora de inicio (RN-EXEC-01)
+        // está asignada a este operario; aquí se cuida la hora de inicio (RN-EXEC-01).
+        // E-11: con la agenda bloqueada, como el resto de cambios de una reserva
+        bookings.lockSchedule();
         Booking booking = requireBooking(bookingId);
         if (status == BookingStatus.IN_PROGRESS) {
             booking.startByOperator(clock.instant());

@@ -417,6 +417,31 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("E-11: el avance del operario, el cambio de estado y la cancelación toman el candado de la agenda")
+    void statusChangesTakeTheScheduleLock() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-09-30T15:10:00Z")));
+        given(bookings.findById(2L)).willReturn(Optional.of(existing(2L, 5L, "2026-10-01T14:00:00Z")));
+        given(bookings.findById(3L)).willReturn(Optional.of(existing(3L, 5L, "2026-10-01T16:00:00Z")));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of());
+        given(bookings.findCancellationReason("SHOP_ISSUE")).willReturn(Optional.of(
+                new CancellationReason((short) 4, "SHOP_ISSUE", "Problema del lavadero", false)));
+
+        service.operatorAdvance(1L, BookingStatus.IN_PROGRESS, new Caller(30L, false));
+        service.changeStatus(3L, BookingStatus.NO_SHOW, null, ADMIN);
+        service.changeStatus(2L, BookingStatus.CANCELLED, "SHOP_ISSUE", ADMIN);
+
+        // operario y estado: se bloquea antes de leer; cancelar: después de validar y antes de guardar
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(bookings);
+        order.verify(bookings).lockSchedule();
+        order.verify(bookings).findById(1L);
+        order.verify(bookings).lockSchedule();
+        order.verify(bookings).findById(3L);
+        order.verify(bookings).findById(2L);
+        order.verify(bookings).lockSchedule();
+        order.verify(bookings).save(org.mockito.ArgumentMatchers.argThat(booking -> booking.id() == 2L), anyLong());
+    }
+
+    @Test
     void daySummaryComparesTheShopDayWithTheDayBefore() {
         // 30/09 en Bogotá va de 05:00Z a 05:00Z del día siguiente
         given(bookings.findStartingBetween(Instant.parse("2026-09-30T05:00:00Z"), Instant.parse("2026-10-01T05:00:00Z"), null))
