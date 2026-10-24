@@ -112,7 +112,7 @@ desde cero (es una base de desarrollo).
 .\mvnw.cmd spring-boot:run
 ```
 
-Puerto `3003`. Pruebas: `./mvnw test`, 50 al 23-10-2026, sin base de datos. Variables propias: `CUSTOMER_SERVICE_URL`,
+Puerto `3003`. Pruebas: `./mvnw test`, 65 al 24-10-2026, sin base de datos. Variables propias: `CUSTOMER_SERVICE_URL`,
 `CUSTOMER_SERVICE_TIMEOUT`, `BOOKING_ZONE` (default `America/Bogota`),
 `BOOKING_SLOT_MINUTES` (30), `BOOKING_MAX_DAYS_AHEAD` (60), `MESSAGING_ENABLED`.
 El resto (`DB_URL`, `DB_PASSWORD`, `JWT_SECRET`, `RABBITMQ_*`) se comparte con
