@@ -3,14 +3,22 @@ package com.lavarapido.booking.infrastructure.adapter.in.web;
 import com.lavarapido.booking.domain.exception.ConflictException;
 import com.lavarapido.booking.domain.exception.DependencyUnavailableException;
 import com.lavarapido.booking.domain.exception.DomainException;
+import com.lavarapido.booking.domain.exception.ForbiddenException;
 import com.lavarapido.booking.domain.exception.NotFoundException;
 import com.lavarapido.booking.domain.exception.ScheduleConflictException;
 import com.lavarapido.booking.domain.exception.SlotUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.dao.UncategorizedDataAccessException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -78,13 +86,34 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Los indices unicos y los triggers de la base son la ultima red (por ejemplo, dos reservas
-     * cruzadas en la misma bahia, tr_booking_bay_overlap). Si saltan es 409, no 500.
+     * BIZ-13 / E-18: la base no responde (caida, sin conexiones, tiempo agotado). Es 503 con el code
+     * que la web y la app ya traducen ("el servicio de reservas no responde"), no 409.
      */
-    @ExceptionHandler({DataIntegrityViolationException.class, DataAccessException.class})
+    @ExceptionHandler({DataAccessResourceFailureException.class, TransientDataAccessResourceException.class,
+            QueryTimeoutException.class, RecoverableDataAccessException.class, CannotCreateTransactionException.class})
+    ProblemDetail handleDatabaseUnavailable(Exception exception) {
+        log.error("Database unavailable: {}", exception.getMessage());
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "BOOKING_SERVICE_UNAVAILABLE",
+                "The database is not responding, try again in a moment");
+    }
+
+    /**
+     * Los indices unicos, los CHECK y los triggers de la base son la ultima red (por ejemplo, dos
+     * reservas cruzadas en la misma bahia, tr_booking_bay_overlap, que llega como error sin categoria).
+     * Un bloqueo que no se pudo tomar tambien es un choque. Si saltan es 409, no 500.
+     */
+    @ExceptionHandler({DataIntegrityViolationException.class, ConcurrencyFailureException.class,
+            UncategorizedDataAccessException.class})
     ProblemDetail handleDataConflict(DataAccessException exception) {
         log.warn("Database rejected the change: {}", exception.getMostSpecificCause().getMessage());
         return problem(HttpStatus.CONFLICT, "CONFLICT", "The data conflicts with an existing record");
+    }
+
+    /** BIZ-13: cualquier otro error de la base (SQL mal armado, mal uso de la API) es nuestro: 500, no 409. */
+    @ExceptionHandler(DataAccessException.class)
+    ProblemDetail handleDataError(DataAccessException exception) {
+        log.error("Database error", exception);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -127,6 +156,8 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             case NotFoundException ignored -> HttpStatus.NOT_FOUND;
             case ConflictException ignored -> HttpStatus.CONFLICT;
             case DependencyUnavailableException ignored -> HttpStatus.SERVICE_UNAVAILABLE;
+            // BIZ-13: customer contesto que no hay permiso; respondio, asi que no es 503
+            case ForbiddenException ignored -> HttpStatus.FORBIDDEN;
             default -> HttpStatus.BAD_REQUEST;
         };
     }

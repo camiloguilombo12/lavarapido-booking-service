@@ -116,6 +116,39 @@ class BookingApiWebTest {
     }
 
     @Test
+    void databaseErrorsAreUnavailableOnlyWhenTheDatabaseIsDown() throws Exception {
+        // BIZ-13 / E-18: base caída es 503; un choque de datos es 409; un error nuestro de SQL es 500
+        given(bookings.mine(any()))
+                .willThrow(new org.springframework.transaction.CannotCreateTransactionException("no connection"))
+                .willThrow(new org.springframework.dao.DataAccessResourceFailureException("connection reset"))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("uq_customer_vehicle"))
+                .willThrow(new org.springframework.dao.InvalidDataAccessResourceUsageException("bad sql"));
+
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("BOOKING_SERVICE_UNAVAILABLE"));
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isServiceUnavailable());
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    @Test
+    void aRejectionFromCustomerIsNotUnavailable() throws Exception {
+        // BIZ-13: customer respondió 403; booking no lo convierte en 503
+        given(bookings.mine(any())).willThrow(
+                new com.lavarapido.booking.domain.exception.ForbiddenException("FORBIDDEN", "denied"));
+
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void invalidBodyIsAValidationError() throws Exception {
         mvc.perform(post("/api/v1/bookings")
                         .header("Authorization", token(7L, "CLIENT"))
