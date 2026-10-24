@@ -34,5 +34,6 @@
     <include file="db/changelog/seed/110-seed-establishment-business-data.sql"/>
     <include file="db/changelog/seed/111-clear-example-business-data.sql"/>
     <include file="db/changelog/seed/112-seed-expired-cancellation-reason.sql"/>
+    <include file="db/changelog/seed/113-clear-example-establishment.sql"/>
 
 </databaseChangeLog>
