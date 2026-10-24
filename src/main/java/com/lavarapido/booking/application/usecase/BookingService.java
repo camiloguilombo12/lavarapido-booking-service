@@ -68,9 +68,9 @@ public class BookingService implements BookingUseCase {
 
     private static final short DEFAULT_QUANTITY = 1;
     private static final String CUSTOMER_CANCEL_REASON = "CUSTOMER_REQUEST";
-    // motivo con el que el sistema cancela una reserva programada que vencio sin confirmarse
+    // motivo del sistema (seed 112); reservas viejas pueden tenerlo, pero nadie lo elige a mano
     static final String EXPIRED_REASON = "EXPIRED";
-    // la tarea programada no es un usuario
+    // el cierre que pide operations-service (no asistio) no lo hace un usuario
     private static final long SYSTEM_ACTOR = 0L;
     private static final long MAX_LIST_DAYS = 62;
     // quien llama por la llave interna: ve todo, como el admin, pero no cambia nada
@@ -353,29 +353,6 @@ public class BookingService implements BookingUseCase {
         return bookings.findCancellationReasons().stream()
                 .filter(reason -> !EXPIRED_REASON.equals(reason.code()))
                 .toList();
-    }
-
-    @Override
-    public int closeExpired() {
-        Instant now = clock.instant();
-        // con la agenda bloqueada: nadie reprograma la misma reserva mientras se cierra
-        bookings.lockSchedule();
-        // solo las programadas: una confirmada pudo atenderse sin registrarse (la decide operations)
-        List<Booking> expired = bookings.findNotStartedEndingBefore(now.minus(settings.expiryGrace())).stream()
-                .filter(booking -> booking.status() == BookingStatus.SCHEDULED)
-                .filter(booking -> booking.isExpired(now, settings.expiryGrace()))
-                .toList();
-        if (expired.isEmpty()) {
-            return 0;
-        }
-        CancellationReason systemReason = requireReason(EXPIRED_REASON);
-        for (Booking booking : expired) {
-            booking.expire(systemReason);
-            Booking saved = bookings.save(booking, SYSTEM_ACTOR);
-            // notification-service cancela los recordatorios que quedaran pendientes
-            publish(BookingEvent.Type.CANCELLED, saved, null, systemReason.name());
-        }
-        return expired.size();
     }
 
     @Override

@@ -130,6 +130,21 @@ class BookingTest {
     }
 
     @Test
+    @DisplayName("B-07: una reserva nace y se reprograma CONFIRMED; una SCHEDULED vieja pasa a CONFIRMED al moverla")
+    void bookingsNeverStayScheduled() {
+        Booking booking = confirmed();
+        Instant newStart = START.plusSeconds(3600 * 2);
+        booking.reschedule(List.of(PREMIUM), newStart, newStart.plusSeconds(75 * 60), (short) 2, null);
+        Booking legacy = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
+                BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
+        legacy.reschedule(List.of(PREMIUM), newStart, newStart.plusSeconds(75 * 60), (short) 2, null);
+
+        // por eso no hay tarea que cierre programadas vencidas: las confirmadas sin operario las cierra operations
+        assertEquals(BookingStatus.CONFIRMED, booking.status());
+        assertEquals(BookingStatus.CONFIRMED, legacy.status());
+    }
+
+    @Test
     @DisplayName("un horario con la pausa fuera del dia no es valido")
     void businessHourValidatesBreak() {
         assertThrows(InvalidValueException.class, () -> new BusinessHour((short) 1, true,
@@ -149,21 +164,6 @@ class BookingTest {
         assertTrue(booking.isExpired(END.plus(hour), hour));
         booking.moveTo(BookingStatus.IN_PROGRESS);
         assertFalse(booking.isExpired(END.plus(Duration.ofDays(1)), hour));
-    }
-
-    @Test
-    @DisplayName("al vencer, solo la programada se cancela sola, con el motivo del sistema")
-    void onlyAScheduledBookingExpiresByItself() {
-        CancellationReason expired = new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false);
-        Booking scheduled = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
-                BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
-
-        scheduled.expire(expired);
-
-        assertEquals(BookingStatus.CANCELLED, scheduled.status());
-        assertEquals("EXPIRED", scheduled.cancellationReason().code());
-        // una confirmada pudo atenderse sin registrarse: no se cierra sola
-        assertThrows(ConflictException.class, () -> confirmed().expire(expired));
     }
 
     @Test
