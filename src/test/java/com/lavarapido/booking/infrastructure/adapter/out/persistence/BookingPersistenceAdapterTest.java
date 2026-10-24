@@ -42,7 +42,7 @@ class BookingPersistenceAdapterTest {
         given(bookings.saveAndFlush(any())).willReturn(saved);
         given(lines.findByBookingId(9L)).willReturn(List.of());
         BookingLine premium = new BookingLine(30L, 2, "PREMIUM", "Premium", new BigDecimal("40000"), (short) 75,
-                (short) 1, 30);
+                (short) 1, 30, (short) 3);
         Booking booking = Booking.confirmNew(5L, List.of(premium), Instant.parse("2026-10-01T14:00:00Z"),
                 Instant.parse("2026-10-01T15:15:00Z"), (short) 1, 7L, null, Instant.parse("2026-09-30T15:00:00Z"));
 
@@ -73,5 +73,20 @@ class BookingPersistenceAdapterTest {
         assertEquals(30, BookingPersistenceAdapter.toLine(frozen, price, Map.of(2, service)).loyaltyPoints());
         // una línea guardada antes de la columna toma el valor vigente (la migración ya la llena)
         assertEquals(50, BookingPersistenceAdapter.toLine(old, price, Map.of(2, service)).loyaltyPoints());
+    }
+
+    @Test
+    @DisplayName("BIZ-06: la línea leída lleva el tipo de vehículo de su tarifa")
+    void readingCarriesTheVehicleTypeOfThePrice() {
+        ServicePriceJpaEntity price = mock(ServicePriceJpaEntity.class);
+        given(price.getId()).willReturn(40L);
+        given(price.getServiceId()).willReturn(2);
+        given(price.getVehicleTypeId()).willReturn((short) 6);
+        given(price.getPrice()).willReturn(new BigDecimal("28000"));
+        given(price.getEstimatedMinutes()).willReturn((short) 75);
+        BookingServiceJpaEntity line = mock(BookingServiceJpaEntity.class);
+        given(line.getQuantity()).willReturn((short) 1);
+
+        assertEquals((short) 6, BookingPersistenceAdapter.toLine(line, price, Map.of()).vehicleTypeId());
     }
 }

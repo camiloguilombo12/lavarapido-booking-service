@@ -239,7 +239,7 @@ class BookingServiceTest {
         Instant start = Instant.parse("2026-10-01T14:00:00Z");
         return Booking.restore(1L, 5L, (short) 1, start, start.plusSeconds(75 * 60), BookingStatus.CONFIRMED, 7L,
                 null, 0, BigDecimal.ZERO, null, List.of(new com.lavarapido.booking.domain.model.BookingLine(30L, 2,
-                        "PREMIUM", "Premium", new BigDecimal("40000"), (short) 75, (short) 1, 10L, 0)), NOW);
+                        "PREMIUM", "Premium", new BigDecimal("40000"), (short) 75, (short) 1, 10L, 0, SUV)), NOW);
     }
 
     @Test
@@ -287,6 +287,42 @@ class BookingServiceTest {
                 new BookingRequest(null, List.of(1), TOMORROW, LocalTime.of(11, 0), null), ADMIN);
 
         assertEquals(new BigDecimal("23000"), view.booking().total());
+    }
+
+    /** Reserva de mañana a las 09:00 con una línea Premium de la tarifa dada. */
+    private static Booking bookingWith(long servicePriceId, String price, short vehicleTypeId) {
+        Instant start = Instant.parse("2026-10-01T14:00:00Z");
+        return Booking.restore(1L, 5L, (short) 1, start, start.plusSeconds(75 * 60), BookingStatus.CONFIRMED, 7L,
+                null, 0, BigDecimal.ZERO, null, List.of(new com.lavarapido.booking.domain.model.BookingLine(
+                        servicePriceId, 2, "PREMIUM", "Premium", new BigDecimal(price), (short) 75, (short) 1, 10L, 0,
+                        vehicleTypeId)), NOW);
+    }
+
+    @Test
+    @DisplayName("INV-BOOK-008: al reprogramar se conserva la tarifa congelada si el vehículo es del mismo tipo")
+    void reschedulingKeepsTheFrozenPriceForTheSameVehicleType() {
+        // la reserva se hizo a 35.000 (tarifa 29); hoy la Premium para SUV vale 40.000 (tarifa 30)
+        given(bookings.findById(1L)).willReturn(Optional.of(bookingWith(29L, "35000", SUV)));
+
+        BookingView view = service.reschedule(1L,
+                new BookingRequest(null, null, TOMORROW, LocalTime.of(11, 0), null), CLIENT);
+
+        assertEquals(new BigDecimal("35000"), view.booking().total());
+        assertEquals(29L, view.booking().lines().getFirst().servicePriceId());
+    }
+
+    @Test
+    @DisplayName("BIZ-06: si el vehículo cambió de tipo, al reprogramar va la tarifa vigente del tipo nuevo")
+    void reschedulingUsesTheNewVehicleTypePrice() {
+        // se reservó como moto (tipo 6, 28.000); el cliente cambió el vehículo a SUV
+        given(bookings.findById(1L)).willReturn(Optional.of(bookingWith(40L, "28000", (short) 6)));
+
+        BookingView view = service.reschedule(1L,
+                new BookingRequest(null, null, TOMORROW, LocalTime.of(11, 0), null), CLIENT);
+
+        assertEquals(new BigDecimal("40000"), view.booking().total());
+        assertEquals(30L, view.booking().lines().getFirst().servicePriceId());
+        assertEquals(SUV, view.booking().lines().getFirst().vehicleTypeId());
     }
 
     @Test

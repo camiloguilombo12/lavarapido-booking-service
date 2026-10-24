@@ -239,9 +239,11 @@ class BookingPersistenceAdapter implements BookingRepository {
         // A-09: los puntos congelados de la línea; solo si faltan, los vigentes del catálogo
         int points = line.getLoyaltyPoints() != null ? line.getLoyaltyPoints()
                 : service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints();
+        // BIZ-06: el tipo de vehiculo de la tarifa, para saber si al reprogramar se puede conservar
+        short vehicleTypeId = price.getVehicleTypeId() == null ? 0 : price.getVehicleTypeId();
         return new BookingLine(price.getId(), price.getServiceId(), service == null ? null : service.getCode(),
                 service == null ? null : service.getName(), price.getPrice(), price.getEstimatedMinutes(),
-                line.getQuantity(), line.getId(), points);
+                line.getQuantity(), line.getId(), points, vehicleTypeId);
     }
 
     private static CancellationReason toReason(CancellationReasonJpaEntity entity) {

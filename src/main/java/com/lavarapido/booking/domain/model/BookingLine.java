@@ -10,14 +10,20 @@ import java.math.BigDecimal;
  * loyaltyPoints es los puntos de fidelizacion que paga este servicio, leidos de
  * catalog.service.loyalty_points al armar la linea y congelados en booking.booking_service.loyalty_points
  * (A-09, changelog 043): si el admin cambia los puntos del servicio despues, la reserva conserva los suyos.
+ *
+ * vehicleTypeId es el tipo de vehiculo de esa tarifa (service_price.vehicle_type_id): al reprogramar,
+ * la tarifa congelada solo se conserva si el vehiculo sigue siendo de ese tipo (BIZ-06).
  */
 public record BookingLine(long servicePriceId, int serviceId, String serviceCode, String serviceName,
-                          BigDecimal price, short estimatedMinutes, short quantity, Long lineId, int loyaltyPoints) {
+                          BigDecimal price, short estimatedMinutes, short quantity, Long lineId, int loyaltyPoints,
+                          short vehicleTypeId) {
 
     /** Linea nueva, todavia sin guardar. */
     public BookingLine(long servicePriceId, int serviceId, String serviceCode, String serviceName,
-                       BigDecimal price, short estimatedMinutes, short quantity, int loyaltyPoints) {
-        this(servicePriceId, serviceId, serviceCode, serviceName, price, estimatedMinutes, quantity, null, loyaltyPoints);
+                       BigDecimal price, short estimatedMinutes, short quantity, int loyaltyPoints,
+                       short vehicleTypeId) {
+        this(servicePriceId, serviceId, serviceCode, serviceName, price, estimatedMinutes, quantity, null, loyaltyPoints,
+                vehicleTypeId);
     }
 
     public BigDecimal subtotal() {

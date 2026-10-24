@@ -399,7 +399,7 @@ public class BookingService implements BookingUseCase {
             ServicePrice price = item.priceFor(vehicleTypeId).orElseThrow(() -> new ConflictException(
                     "SERVICE_NOT_AVAILABLE_FOR_VEHICLE", "Service " + item.code() + " has no price for this vehicle type"));
             lines.add(new BookingLine(price.id(), item.id(), item.code(), item.name(), price.price(),
-                    price.estimatedMinutes(), DEFAULT_QUANTITY, item.loyaltyPoints()));
+                    price.estimatedMinutes(), DEFAULT_QUANTITY, item.loyaltyPoints(), price.vehicleTypeId()));
         }
         return lines;
     }
@@ -407,11 +407,16 @@ public class BookingService implements BookingUseCase {
     /**
      * Al reprogramar, los servicios que ya estaban conservan la tarifa con la que se reservaron
      * (INV-BOOK-008): subir un precio no le cambia el cobro a quien ya tenia su reserva.
+     * BIZ-06: solo si esa tarifa es del mismo tipo de vehiculo. Si el vehiculo cambio de tipo (de moto
+     * a camioneta), va la tarifa vigente del tipo nuevo, con su precio y su duracion.
      */
     private static List<BookingLine> keepFrozenPrices(Booking booking, List<BookingLine> current) {
         Map<Integer, BookingLine> frozen = booking.lines().stream()
                 .collect(Collectors.toMap(BookingLine::serviceId, Function.identity(), (a, b) -> a));
-        return current.stream().map(line -> frozen.getOrDefault(line.serviceId(), line)).toList();
+        return current.stream().map(line -> {
+            BookingLine old = frozen.get(line.serviceId());
+            return old != null && old.vehicleTypeId() == line.vehicleTypeId() ? old : line;
+        }).toList();
     }
 
     private Slot requireFreeSlot(LocalDate date, LocalTime time, List<BookingLine> lines, long excludeBookingId) {
