@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -51,6 +52,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DomainException.class)
     ProblemDetail handleDomain(DomainException exception) {
         return problem(statusOf(exception), exception.code(), exception.getMessage());
+    }
+
+    /**
+     * BIZ-09 / E-11: otra peticion cambio la reserva entre la lectura y el guardado (row_version,
+     * @Version). Su cambio no se pisa: 409 y quien llama vuelve a cargarla.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ProblemDetail handleStaleUpdate(OptimisticLockingFailureException exception) {
+        log.info("Stale update rejected: {}", exception.getMessage());
+        return problem(HttpStatus.CONFLICT, "CONFLICT", "The record was changed by someone else, load it again");
     }
 
     /**

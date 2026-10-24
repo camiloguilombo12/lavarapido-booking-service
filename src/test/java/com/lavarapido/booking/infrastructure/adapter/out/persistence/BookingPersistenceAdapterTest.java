@@ -76,6 +76,18 @@ class BookingPersistenceAdapterTest {
     }
 
     @Test
+    @DisplayName("BIZ-09: row_version es la versión del bloqueo optimista de la reserva")
+    void bookingRowVersionIsTheOptimisticLockVersion() throws NoSuchFieldException {
+        java.lang.reflect.Field field = BookingJpaEntity.class.getDeclaredField("rowVersion");
+        jakarta.persistence.Column column = field.getAnnotation(jakarta.persistence.Column.class);
+
+        org.junit.jupiter.api.Assertions.assertNotNull(field.getAnnotation(jakarta.persistence.Version.class));
+        assertEquals("row_version", column.name());
+        // Hibernate la escribe (WHERE row_version = la leída); el trigger ya no la sube otra vez (045)
+        org.junit.jupiter.api.Assertions.assertTrue(column.insertable() && column.updatable());
+    }
+
+    @Test
     @DisplayName("BIZ-06: la línea leída lleva el tipo de vehículo de su tarifa")
     void readingCarriesTheVehicleTypeOfThePrice() {
         ServicePriceJpaEntity price = mock(ServicePriceJpaEntity.class);
