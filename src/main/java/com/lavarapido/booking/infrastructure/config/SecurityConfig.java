@@ -31,7 +31,8 @@ import java.util.List;
  * credenciales.
  *
  * Publico (solo lectura): el catalogo, el horario y los datos de la sede, que tambien ve la
- * landing sin sesion. Reservar exige sesion. /api/v1/admin/** exige el rol ADMIN.
+ * landing sin sesion. Reservar exige sesion. /api/v1/admin/** exige el rol ADMIN y
+ * /api/v1/bookings/** el rol CLIENT (BIZ-12).
  */
 @Configuration
 @EnableWebSecurity
@@ -45,6 +46,18 @@ class SecurityConfig {
             "/actuator/health",
             "/actuator/health/**",
             "/actuator/info"
+    };
+
+    /** Rutas del cliente (BIZ-12): un admin o un operario no reserva ni ve "mis reservas". */
+    private static final String[] CLIENT_ENDPOINTS = {
+            "/api/v1/bookings",
+            "/api/v1/bookings/**"
+    };
+
+    /** Lecturas del cliente que tambien usa el formulario de reservas del admin. */
+    private static final String[] CLIENT_AND_ADMIN_GET_ENDPOINTS = {
+            "/api/v1/bookings/availability",
+            "/api/v1/bookings/cancellation-reasons"
     };
 
     /** Swagger UI y el JSON de OpenAPI. Solo existen con el perfil dev (application-dev.yml). */
@@ -91,6 +104,10 @@ class SecurityConfig {
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         // E-01: solo operations-service, con el token del operario y la llave interna
                         .requestMatchers("/api/v1/operator/**").access(throughOperations(internalApiKey))
+                        // BIZ-12 / A-10: las reservas "mias" son solo del rol CLIENT. Las horas libres y los
+                        // motivos de cancelacion tambien los lee el admin (formulario de reservas de la web)
+                        .requestMatchers(HttpMethod.GET, CLIENT_AND_ADMIN_GET_ENDPOINTS).hasAnyRole("CLIENT", "ADMIN")
+                        .requestMatchers(CLIENT_ENDPOINTS).hasRole("CLIENT")
                         .requestMatchers("/api/v1/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
