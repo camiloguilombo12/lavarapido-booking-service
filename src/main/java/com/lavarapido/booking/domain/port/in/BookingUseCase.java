@@ -35,6 +35,12 @@ public interface BookingUseCase {
 
     List<BookingView> listForService(LocalDate from, LocalDate to);
 
+    /**
+     * BIZ-08: cuantas reservas activas tiene el vehiculo (en curso, o programadas/confirmadas que no
+     * han terminado). customer-service lo pregunta antes de dejar retirar el vehiculo.
+     */
+    long activeBookingsOf(long customerVehicleId);
+
     /** Reservas de un día (por defecto hoy, en la hora del lavadero) frente al día anterior. Solo admin. */
     DaySummary daySummary(LocalDate date, Caller caller);
 

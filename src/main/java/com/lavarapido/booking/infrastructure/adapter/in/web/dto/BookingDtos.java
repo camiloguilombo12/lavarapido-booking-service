@@ -64,6 +64,10 @@ public final class BookingDtos {
     public record StatusRequest(@NotBlank String status, String reasonCode) {
     }
 
+    /** BIZ-08: GET /internal/v1/bookings/active-count (lo usa customer-service). */
+    public record ActiveCountResponse(long customerVehicleId, long activeBookings) {
+    }
+
     public record AvailabilityResponse(LocalDate date, boolean open, int durationMinutes, List<SlotResponse> slots) {
 
         public static AvailabilityResponse from(DayAvailability availability) {

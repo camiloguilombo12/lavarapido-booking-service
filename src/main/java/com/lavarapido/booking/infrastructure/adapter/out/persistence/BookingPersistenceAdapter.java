@@ -129,6 +129,11 @@ class BookingPersistenceAdapter implements BookingRepository {
     }
 
     @Override
+    public long countActiveForVehicle(long customerVehicleId, Instant now) {
+        return bookings.countActiveForVehicle(customerVehicleId, now);
+    }
+
+    @Override
     public List<Booking> findNotStartedEndingBefore(Instant before) {
         return toDomain(bookings.findNotStartedEndingBefore(before));
     }

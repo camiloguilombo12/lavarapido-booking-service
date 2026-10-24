@@ -187,6 +187,21 @@ class BookingApiWebTest {
     }
 
     @Test
+    void activeCountIsInternalAndAnswersTheSharedContract() throws Exception {
+        // BIZ-08: customer-service lo pide con la llave interna antes de retirar un vehiculo
+        given(bookings.activeBookingsOf(15L)).willReturn(2L);
+
+        mvc.perform(get("/internal/v1/bookings/active-count").param("customerVehicleId", "15")
+                        .header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/v1/bookings/active-count").param("customerVehicleId", "15")
+                        .header("X-Internal-Key", INTERNAL_KEY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerVehicleId").value(15))
+                .andExpect(jsonPath("$.activeBookings").value(2));
+    }
+
+    @Test
     void onlyOperationsCanCloseABookingAsNotAttended() throws Exception {
         given(bookings.markUnattended(7L)).willThrow(new com.lavarapido.booking.domain.exception.ConflictException(
                 "BOOKING_NOT_EXPIRED", "not yet"));
