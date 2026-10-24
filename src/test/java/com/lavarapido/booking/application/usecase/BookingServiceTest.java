@@ -234,6 +234,23 @@ class BookingServiceTest {
         assertEquals("SCHEDULE_CONFLICT", view.booking().cancellationReason().code());
     }
 
+    @Test
+    @DisplayName("A-20 / OPS-10: BookingCancelled lleva el código del motivo además de su texto")
+    void cancelledEventCarriesTheReasonCode() {
+        given(bookings.findById(1L)).willReturn(Optional.of(existing(1L, 5L, "2026-10-01T14:00:00Z")));
+        given(customers.ownVehicles()).willReturn(List.of(MY_SUV));
+        given(bookings.findCancellationReason("SCHEDULE_CONFLICT")).willReturn(Optional.of(
+                new CancellationReason((short) 2, "SCHEDULE_CONFLICT", "El cliente no puede a esa hora", false)));
+
+        service.cancel(1L, "SCHEDULE_CONFLICT", CLIENT);
+
+        ArgumentCaptor<BookingEvent> event = ArgumentCaptor.forClass(BookingEvent.class);
+        verify(events).publish(event.capture());
+        assertEquals(BookingEvent.Type.CANCELLED, event.getValue().type());
+        assertEquals("SCHEDULE_CONFLICT", event.getValue().reasonCode());
+        assertEquals("El cliente no puede a esa hora", event.getValue().reason());
+    }
+
     /** Reserva de mañana a las 09:00 (Bogotá) con una línea Premium de 40.000. */
     private static Booking premiumBooking() {
         Instant start = Instant.parse("2026-10-01T14:00:00Z");
