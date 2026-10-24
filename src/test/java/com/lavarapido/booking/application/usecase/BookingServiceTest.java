@@ -234,6 +234,61 @@ class BookingServiceTest {
         assertEquals("SCHEDULE_CONFLICT", view.booking().cancellationReason().code());
     }
 
+    /** Reserva de mañana a las 09:00 (Bogotá) con una línea Premium de 40.000. */
+    private static Booking premiumBooking() {
+        Instant start = Instant.parse("2026-10-01T14:00:00Z");
+        return Booking.restore(1L, 5L, (short) 1, start, start.plusSeconds(75 * 60), BookingStatus.CONFIRMED, 7L,
+                null, 0, BigDecimal.ZERO, null, List.of(new com.lavarapido.booking.domain.model.BookingLine(30L, 2,
+                        "PREMIUM", "Premium", new BigDecimal("40000"), (short) 75, (short) 1, 10L, 0)), NOW);
+    }
+
+    @Test
+    @DisplayName("BIZ-01: el cliente no cambia los servicios al reprogramar (409 BOOKING_SERVICES_LOCKED)")
+    void customerCannotChangeTheServicesWhenRescheduling() {
+        given(bookings.findById(1L)).willReturn(Optional.of(premiumBooking()));
+
+        ConflictException error = assertThrows(ConflictException.class, () -> service.reschedule(1L,
+                new BookingRequest(null, List.of(1), TOMORROW, LocalTime.of(11, 0), null), CLIENT));
+
+        assertEquals("BOOKING_SERVICES_LOCKED", error.code());
+        verify(bookings, never()).save(any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("BIZ-01: el cliente sí mueve fecha y hora, con o sin repetir los mismos servicios")
+    void customerMovesOnlyTheDateAndTime() {
+        given(bookings.findById(1L)).willReturn(Optional.of(premiumBooking()));
+
+        BookingView sameServices = service.reschedule(1L,
+                new BookingRequest(null, List.of(2), TOMORROW, LocalTime.of(11, 0), null), CLIENT);
+        BookingView noServices = service.reschedule(1L,
+                new BookingRequest(null, null, TOMORROW, LocalTime.of(12, 0), null), CLIENT);
+
+        assertEquals(LocalTime.of(11, 0), sameServices.localStart().toLocalTime());
+        assertEquals(LocalTime.of(12, 0), noServices.localStart().toLocalTime());
+        assertEquals(List.of(2), noServices.booking().lines().stream()
+                .map(com.lavarapido.booking.domain.model.BookingLine::serviceId).toList());
+        assertEquals(new BigDecimal("40000"), noServices.booking().total());
+    }
+
+    @Test
+    @DisplayName("BIZ-01: el admin sí puede cambiar los servicios de la reserva")
+    void adminCanChangeTheServices() {
+        CatalogItem basic = new CatalogItem(1, "BASIC", "Basico", null,
+                new ServiceCategory((short) 1, "LAVADO", "Lavado", (short) 1), true,
+                List.of(new ServicePrice(31L, 1, SUV, new BigDecimal("23000"), (short) 45, LocalDate.parse("2026-01-01"), null)),
+                0);
+        given(catalog.findServicesByIds(List.of(1))).willReturn(List.of(basic));
+        given(bookings.findById(1L)).willReturn(Optional.of(premiumBooking()));
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of(5L, new VehicleSnapshot(5L, "ABC123", "ABC-123",
+                "SUV", SUV, "Camioneta SUV", "Mazda", "CX-5", 7L)));
+
+        BookingView view = service.reschedule(1L,
+                new BookingRequest(null, List.of(1), TOMORROW, LocalTime.of(11, 0), null), ADMIN);
+
+        assertEquals(new BigDecimal("23000"), view.booking().total());
+    }
+
     @Test
     @DisplayName("A-11: cuando el admin cambia el estado, sale el evento para avisarle al cliente")
     void adminStatusChangeNotifiesTheCustomer() {

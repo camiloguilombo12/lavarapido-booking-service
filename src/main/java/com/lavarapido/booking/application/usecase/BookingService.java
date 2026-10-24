@@ -41,6 +41,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -142,13 +143,20 @@ public class BookingService implements BookingUseCase {
     public BookingView reschedule(long bookingId, BookingRequest request, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         requireChangeableBy(booking, caller);
+        List<Integer> currentServiceIds = booking.lines().stream().map(BookingLine::serviceId).toList();
+        boolean changesServices = request.serviceIds() != null && !request.serviceIds().isEmpty()
+                && !new HashSet<>(request.serviceIds()).equals(new HashSet<>(currentServiceIds));
+        // BIZ-01: el cliente solo cambia fecha y hora. Otros servicios cambian el cobro y el pago que
+        // ya reportó no se entera; eso lo hace el admin (la web le advierte)
+        if (changesServices && !caller.admin()) {
+            throw new ConflictException("BOOKING_SERVICES_LOCKED",
+                    "A customer can only change the date and time of a booking");
+        }
         VehicleSnapshot vehicle = vehicleOf(booking, caller);
         if (vehicle == null) {
             throw new NotFoundException("VEHICLE_NOT_FOUND", "The vehicle of this booking no longer exists");
         }
-        List<Integer> serviceIds = request.serviceIds() == null || request.serviceIds().isEmpty()
-                ? booking.lines().stream().map(BookingLine::serviceId).toList()
-                : request.serviceIds();
+        List<Integer> serviceIds = changesServices ? request.serviceIds() : currentServiceIds;
         List<BookingLine> lines = keepFrozenPrices(booking, linesFor(serviceIds, vehicle.vehicleTypeId()));
 
         bookings.lockSchedule();

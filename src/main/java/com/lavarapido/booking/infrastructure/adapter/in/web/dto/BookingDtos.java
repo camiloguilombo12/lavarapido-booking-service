@@ -43,7 +43,10 @@ public final class BookingDtos {
         }
     }
 
-    /** serviceIds vacio conserva los servicios que ya tenia. */
+    /**
+     * serviceIds vacio conserva los servicios que ya tenia. Solo el admin puede mandar otros; el
+     * cliente recibe 409 BOOKING_SERVICES_LOCKED (BIZ-01).
+     */
     public record RescheduleRequest(
             List<Integer> serviceIds,
             @NotNull LocalDate date,

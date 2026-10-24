@@ -78,7 +78,10 @@ class BookingController {
         return BookingResponse.from(bookings.get(id, AuthenticatedUser.customer(jwt)), false);
     }
 
-    /** Cambiar fecha, hora o servicios (RF-007: solo antes de la hora de inicio). */
+    /**
+     * Cambiar fecha y hora (RF-007: solo antes de la hora de inicio). Los servicios no: si llegan
+     * otros, 409 BOOKING_SERVICES_LOCKED (BIZ-01); el admin los cambia por /admin/bookings.
+     */
     @PutMapping("/{id}")
     BookingResponse reschedule(@AuthenticationPrincipal Jwt jwt, @PathVariable long id,
                                @Valid @RequestBody RescheduleRequest request) {
