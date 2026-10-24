@@ -38,6 +38,14 @@ public final class BookingJpaRepositories {
                 """)
         List<BookingJpaEntity> findNotStartedEndingBefore(@Param("before") Instant before);
 
+        /** BIZ-10: activas (1, 2, 3) que todavia no terminan, por hora de inicio. */
+        @Query("""
+                SELECT b FROM BookingJpaEntity b
+                WHERE b.deletedAt IS NULL AND b.statusId IN (1, 2, 3) AND b.scheduledEnd > :from
+                ORDER BY b.scheduledStart ASC
+                """)
+        List<BookingJpaEntity> findActiveEndingAfter(@Param("from") Instant from);
+
         @Query("""
                 SELECT b FROM BookingJpaEntity b
                 WHERE b.deletedAt IS NULL

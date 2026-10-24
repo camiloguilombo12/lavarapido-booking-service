@@ -137,6 +137,21 @@ class BookingApiWebTest {
     }
 
     @Test
+    void scheduleConflictsSayHowManyBookingsFallOutside() throws Exception {
+        // BIZ-10: quitar la excepción deja reservas por fuera; la respuesta dice cuántas y cuáles
+        org.mockito.BDDMockito.willThrow(new com.lavarapido.booking.domain.exception.ScheduleConflictException(
+                        List.of("RES-000009", "RES-000010")))
+                .given(schedule).deleteException(3, 1L);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/v1/admin/schedule/exceptions/3").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SCHEDULE_CONFLICTS_BOOKINGS"))
+                .andExpect(jsonPath("$.conflictingBookings").value(2))
+                .andExpect(jsonPath("$.bookingCodes[1]").value("RES-000010"));
+    }
+
+    @Test
     void aStaleBookingAnswersConflict() throws Exception {
         // BIZ-09: otra petición cambió la reserva entre la lectura y el guardado (row_version)
         given(bookings.cancel(org.mockito.ArgumentMatchers.anyLong(), any(), any())).willThrow(
