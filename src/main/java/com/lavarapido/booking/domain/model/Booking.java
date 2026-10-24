@@ -141,14 +141,6 @@ public class Booking {
         return status.isChangeable() && !now.isBefore(scheduledEnd.plus(grace));
     }
 
-    /** Una programada que vencio sin confirmarse: la cancela el sistema con su motivo. */
-    public void expire(CancellationReason systemReason) {
-        if (status != BookingStatus.SCHEDULED) {
-            throw new ConflictException("INVALID_STATUS_TRANSITION", "Only a scheduled booking expires by itself");
-        }
-        cancel(systemReason);
-    }
-
     /**
      * El sistema la deja NO_SHOW: confirmada, vencida y sin operario asignado (eso lo sabe
      * operations-service, que es quien la pide). Con operario no se decide sola: el operario pudo

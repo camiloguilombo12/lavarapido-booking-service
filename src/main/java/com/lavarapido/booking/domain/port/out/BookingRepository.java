@@ -39,9 +39,6 @@ public interface BookingRepository {
     /** BIZ-10: reservas activas (SCHEDULED, CONFIRMED, IN_PROGRESS) que terminan despues de from. */
     List<Booking> findActiveEndingAfter(Instant from);
 
-    /** Reservas sin iniciar (SCHEDULED o CONFIRMED) que terminaron antes de esa hora. */
-    List<Booking> findNotStartedEndingBefore(Instant before);
-
     List<CancellationReason> findCancellationReasons();
 
     Optional<CancellationReason> findCancellationReason(String code);
