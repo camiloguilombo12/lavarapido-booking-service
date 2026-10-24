@@ -92,6 +92,30 @@ class BookingApiWebTest {
     }
 
     @Test
+    void customerRoutesAreOnlyForClients() throws Exception {
+        // BIZ-12 / A-10: un admin o un operario no reserva ni ve "mis reservas" como si fuera cliente
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/bookings").header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleId\":5,\"serviceIds\":[2],\"date\":\"2026-10-01\",\"time\":\"09:00\"}"))
+                .andExpect(status().isForbidden());
+        org.mockito.Mockito.verifyNoInteractions(bookings);
+
+        given(bookings.mine(any())).willReturn(List.of());
+        given(bookings.cancellationReasons()).willReturn(List.of());
+        mvc.perform(get("/api/v1/bookings/me").header("Authorization", token(7L, "CLIENT")))
+                .andExpect(status().isOk());
+        // el formulario de reservas del admin sí lee los motivos (y las horas libres); el operario no
+        mvc.perform(get("/api/v1/bookings/cancellation-reasons").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/bookings/cancellation-reasons").header("Authorization", token(30L, "OPERATOR")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void adminCanListBookings() throws Exception {
         given(bookings.list(any(), any(), any(), any())).willReturn(List.of());
         mvc.perform(get("/api/v1/admin/bookings").header("Authorization", token(1L, "ADMIN")))
