@@ -38,10 +38,15 @@ public class Booking {
     private String notes;
     private List<BookingLine> lines;
     private final Instant createdAt;
+    // contrato de pago de la reserva (26-10-2026): null en las reservas de antes y en las del admin sin modo
+    private final PaymentMode paymentMode;
+    private final Instant paymentDeadline;
+    private Instant paymentReportedAt;
 
     private Booking(long id, long customerVehicleId, Short serviceBayId, Instant scheduledStart, Instant scheduledEnd,
                     BookingStatus status, long bookedBy, CancellationReason cancellationReason, int pointsRedeemed,
-                    BigDecimal pointsDiscountAmount, String notes, List<BookingLine> lines, Instant createdAt) {
+                    BigDecimal pointsDiscountAmount, String notes, List<BookingLine> lines, Instant createdAt,
+                    PaymentMode paymentMode, Instant paymentDeadline, Instant paymentReportedAt) {
         this.id = id;
         this.customerVehicleId = customerVehicleId;
         this.serviceBayId = serviceBayId;
@@ -55,6 +60,9 @@ public class Booking {
         this.notes = notes;
         this.lines = List.copyOf(lines);
         this.createdAt = createdAt;
+        this.paymentMode = paymentMode;
+        this.paymentDeadline = paymentDeadline;
+        this.paymentReportedAt = paymentReportedAt;
     }
 
     /**
@@ -63,13 +71,23 @@ public class Booking {
      */
     public static Booking confirmNew(long customerVehicleId, List<BookingLine> lines, Instant start, Instant end,
                                      short bayId, long bookedBy, String notes, Instant now) {
+        return confirmNew(customerVehicleId, lines, start, end, bayId, bookedBy, notes, now, null, null);
+    }
+
+    /**
+     * Con el modo de pago y el plazo del pago digital (PaymentPolicy.deadlineFor). Las del admin
+     * llegan sin plazo; el modo puede ser null.
+     */
+    public static Booking confirmNew(long customerVehicleId, List<BookingLine> lines, Instant start, Instant end,
+                                     short bayId, long bookedBy, String notes, Instant now,
+                                     PaymentMode paymentMode, Instant paymentDeadline) {
         if (customerVehicleId <= 0) {
             throw new InvalidValueException("INVALID_VEHICLE", "A booking requires a customer vehicle");
         }
         requireLines(lines);
         requireRange(start, end);
         return new Booking(0L, customerVehicleId, bayId, start, end, BookingStatus.CONFIRMED, bookedBy, null,
-                0, BigDecimal.ZERO, cleanNotes(notes), lines, now);
+                0, BigDecimal.ZERO, cleanNotes(notes), lines, now, paymentMode, paymentDeadline, null);
     }
 
     public static Booking restore(long id, long customerVehicleId, Short serviceBayId, Instant start, Instant end,
@@ -77,7 +95,17 @@ public class Booking {
                                   BigDecimal pointsDiscountAmount, String notes, List<BookingLine> lines,
                                   Instant createdAt) {
         return new Booking(id, customerVehicleId, serviceBayId, start, end, status, bookedBy, reason, pointsRedeemed,
-                pointsDiscountAmount, notes, lines, createdAt);
+                pointsDiscountAmount, notes, lines, createdAt, null, null, null);
+    }
+
+    /** Con los datos del pago (columnas de la 049). */
+    public static Booking restore(long id, long customerVehicleId, Short serviceBayId, Instant start, Instant end,
+                                  BookingStatus status, long bookedBy, CancellationReason reason, int pointsRedeemed,
+                                  BigDecimal pointsDiscountAmount, String notes, List<BookingLine> lines,
+                                  Instant createdAt, PaymentMode paymentMode, Instant paymentDeadline,
+                                  Instant paymentReportedAt) {
+        return new Booking(id, customerVehicleId, serviceBayId, start, end, status, bookedBy, reason, pointsRedeemed,
+                pointsDiscountAmount, notes, lines, createdAt, paymentMode, paymentDeadline, paymentReportedAt);
     }
 
     /** Cambia franja, bahia y (si llegan) servicios. Solo antes de empezar (RF-007). */
@@ -152,6 +180,33 @@ public class Booking {
                     "Only a confirmed booking past its end and margin can be closed as not attended");
         }
         moveTo(BookingStatus.NO_SHOW);
+    }
+
+    /**
+     * payment-service avisa que el cliente subio el comprobante (o que el pago se aprobo). Solo la
+     * primera vez cuenta (el mensaje puede llegar repetido); una cancelada no cambia. Devuelve si
+     * cambio algo.
+     */
+    public boolean markPaymentReported(Instant at) {
+        if (paymentReportedAt != null || status == BookingStatus.CANCELLED) {
+            return false;
+        }
+        this.paymentReportedAt = at;
+        return true;
+    }
+
+    public boolean paymentReported() {
+        return paymentReportedAt != null;
+    }
+
+    /**
+     * D: DIGITAL, sin comprobante y con el plazo cumplido. Solo mientras se puede cancelar
+     * (SCHEDULED o CONFIRMED): una que ya empezo la atiende el lavadero aunque no se haya pagado.
+     * Las de antes del cambio y las del admin no tienen plazo, asi que nunca vencen.
+     */
+    public boolean paymentOverdue(Instant now) {
+        return paymentMode == PaymentMode.DIGITAL && paymentDeadline != null && paymentReportedAt == null
+                && status.isChangeable() && !now.isBefore(paymentDeadline);
     }
 
     /** El cliente solo puede cambiarla antes de la hora de inicio y si no ha empezado. */
@@ -282,5 +337,17 @@ public class Booking {
 
     public Instant createdAt() {
         return createdAt;
+    }
+
+    public PaymentMode paymentMode() {
+        return paymentMode;
+    }
+
+    public Instant paymentDeadline() {
+        return paymentDeadline;
+    }
+
+    public Instant paymentReportedAt() {
+        return paymentReportedAt;
     }
 }

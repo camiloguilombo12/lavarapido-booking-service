@@ -5,6 +5,7 @@ import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BookingLine;
 import com.lavarapido.booking.domain.model.BookingStatus;
 import com.lavarapido.booking.domain.model.CancellationReason;
+import com.lavarapido.booking.domain.model.PaymentMode;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BookingJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BookingServiceJpaEntity;
@@ -93,6 +94,10 @@ class BookingPersistenceAdapter implements BookingRepository {
         entity.setStatusId(booking.status().id());
         entity.setCancellationReasonId(booking.cancellationReason() == null ? null : booking.cancellationReason().id());
         entity.setNotes(booking.notes());
+        // el modo y el plazo no cambian despues de crearla (reprogramar no los toca); el reporte si
+        entity.setPaymentMode(booking.paymentMode() == null ? null : booking.paymentMode().name());
+        entity.setPaymentDeadline(booking.paymentDeadline());
+        entity.setPaymentReportedAt(booking.paymentReportedAt());
         entity.setUpdatedBy(actor);
         BookingJpaEntity saved = bookings.saveAndFlush(entity);
         if (booking.id() == 0L) {
@@ -136,6 +141,11 @@ class BookingPersistenceAdapter implements BookingRepository {
     @Override
     public List<Booking> findActiveEndingAfter(Instant from) {
         return toDomain(bookings.findActiveEndingAfter(from));
+    }
+
+    @Override
+    public long countActiveCashBookedBy(long userId) {
+        return bookings.countActiveCashBookedBy(userId);
     }
 
     @Override
@@ -228,7 +238,9 @@ class BookingPersistenceAdapter implements BookingRepository {
                     entity.getCancellationReasonId() == null ? null : reasonById.get(entity.getCancellationReasonId()),
                     entity.getPointsRedeemed() == null ? 0 : entity.getPointsRedeemed(),
                     entity.getPointsDiscountAmount() == null ? BigDecimal.ZERO : entity.getPointsDiscountAmount(),
-                    entity.getNotes(), bookingLines, entity.getCreatedAt()));
+                    entity.getNotes(), bookingLines, entity.getCreatedAt(),
+                    PaymentMode.fromColumn(entity.getPaymentMode()), entity.getPaymentDeadline(),
+                    entity.getPaymentReportedAt()));
         }
         return result;
     }

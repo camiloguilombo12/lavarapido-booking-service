@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -179,5 +180,72 @@ class BookingTest {
         booking.markUnattended(END.plus(hour), hour);
         assertEquals(BookingStatus.NO_SHOW, booking.status());
         assertThrows(ConflictException.class, () -> booking.markUnattended(END.plus(hour), hour));
+    }
+
+    private static Booking digital(BookingStatus status, Instant deadline, Instant reportedAt) {
+        return Booking.restore(9L, 5L, (short) 1, START, END, status, 7L, null, 0, BigDecimal.ZERO, null,
+                List.of(PREMIUM), NOW, PaymentMode.DIGITAL, deadline, reportedAt);
+    }
+
+    @Test
+    @DisplayName("contrato de pago: una reserva nueva guarda el modo y el plazo, y nace sin reporte")
+    void newBookingKeepsThePaymentTerms() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+        Booking booking = Booking.confirmNew(5L, List.of(PREMIUM), START, END, (short) 1, 7L, null, NOW,
+                PaymentMode.DIGITAL, deadline);
+
+        assertEquals(PaymentMode.DIGITAL, booking.paymentMode());
+        assertEquals(deadline, booking.paymentDeadline());
+        assertFalse(booking.paymentReported());
+        // las de antes del cambio no tienen modo y nunca vencen
+        assertNull(confirmed().paymentMode());
+        assertFalse(confirmed().paymentOverdue(START));
+    }
+
+    @Test
+    @DisplayName("D: vence solo la DIGITAL sin reporte, con el plazo cumplido y que aún se puede cancelar")
+    void paymentOverdue() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+
+        assertFalse(digital(BookingStatus.CONFIRMED, deadline, null).paymentOverdue(deadline.minusSeconds(1)));
+        assertTrue(digital(BookingStatus.CONFIRMED, deadline, null).paymentOverdue(deadline));
+        assertTrue(digital(BookingStatus.SCHEDULED, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        // con comprobante, ya empezada o ya cancelada no vence
+        assertFalse(digital(BookingStatus.CONFIRMED, deadline, NOW).paymentOverdue(deadline.plusSeconds(60)));
+        assertFalse(digital(BookingStatus.IN_PROGRESS, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        assertFalse(digital(BookingStatus.CANCELLED, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        // sin plazo (la creó el admin) o en efectivo nunca vence
+        assertFalse(digital(BookingStatus.CONFIRMED, null, null).paymentOverdue(END));
+        Booking cash = Booking.confirmNew(5L, List.of(PREMIUM), START, END, (short) 1, 7L, null, NOW,
+                PaymentMode.CASH, null);
+        assertFalse(cash.paymentOverdue(END));
+    }
+
+    @Test
+    @DisplayName("el reporte del pago se guarda una sola vez y no toca una cancelada")
+    void paymentReportedIsIdempotent() {
+        Booking booking = digital(BookingStatus.CONFIRMED, NOW.plusSeconds(1800), null);
+        Instant first = NOW.plusSeconds(60);
+
+        assertTrue(booking.markPaymentReported(first));
+        assertFalse(booking.markPaymentReported(first.plusSeconds(60)));
+        assertEquals(first, booking.paymentReportedAt());
+        assertTrue(booking.paymentReported());
+
+        Booking cancelled = digital(BookingStatus.CANCELLED, NOW.plusSeconds(1800), null);
+        assertFalse(cancelled.markPaymentReported(first));
+        assertFalse(cancelled.paymentReported());
+    }
+
+    @Test
+    @DisplayName("regla 7: reprogramar no cambia ni el modo ni el plazo")
+    void rescheduleKeepsThePaymentTerms() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+        Booking booking = digital(BookingStatus.CONFIRMED, deadline, null);
+
+        booking.reschedule(List.of(PREMIUM), START.plusSeconds(3600), END.plusSeconds(3600), (short) 2, null);
+
+        assertEquals(PaymentMode.DIGITAL, booking.paymentMode());
+        assertEquals(deadline, booking.paymentDeadline());
     }
 }

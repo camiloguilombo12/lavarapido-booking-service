@@ -14,6 +14,7 @@ import com.lavarapido.booking.domain.model.CancellationReason;
 import com.lavarapido.booking.domain.model.CatalogItem;
 import com.lavarapido.booking.domain.model.DayWindow;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.PaymentMode;
 import com.lavarapido.booking.domain.model.ServiceBay;
 import com.lavarapido.booking.domain.model.ServicePrice;
 import com.lavarapido.booking.domain.model.VehicleSnapshot;
@@ -31,6 +32,7 @@ import com.lavarapido.booking.domain.port.out.ScheduleRepository;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Occupancy;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Slot;
+import com.lavarapido.booking.domain.service.PaymentPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -121,6 +123,9 @@ public class BookingService implements BookingUseCase {
         if (request.vehicleId() == null) {
             throw new InvalidValueException("VEHICLE_REQUIRED", "Choose a vehicle");
         }
+        // contrato de pago: el cliente siempre dice como paga (400 INVALID_PAYMENT_MODE); el admin, si quiere
+        PaymentMode paymentMode = caller.admin() ? PaymentMode.ofOptional(request.paymentMode())
+                : PaymentMode.of(request.paymentMode());
         VehicleSnapshot vehicle = requireVehicle(request.vehicleId(), caller);
         List<BookingLine> lines = linesFor(request.serviceIds(), vehicle.vehicleTypeId());
         Instant now = clock.instant();
@@ -129,8 +134,19 @@ public class BookingService implements BookingUseCase {
         Slot slot = requireFreeSlot(request.date(), request.time(), lines, 0L);
         LocalDateTime start = request.date().atTime(slot.time());
         requireVehicleFree(vehicle.id(), start, start.plusMinutes(durationOf(lines)), 0L);
-        Booking booking = Booking.confirmNew(vehicle.id(), lines, toInstant(start),
-                toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(), caller.userId(), request.notes(), now);
+        // B: con la agenda bloqueada, asi dos reservas en efectivo al mismo tiempo no pasan las dos.
+        // Las que crea el admin no tienen limite (cliente por telefono o que llega al lavadero)
+        if (!caller.admin() && paymentMode == PaymentMode.CASH) {
+            PaymentPolicy.requireCashAllowed(bookings.countActiveCashBookedBy(caller.userId()),
+                    settings.cashActiveLimit());
+        }
+        Instant startsAt = toInstant(start);
+        // D: solo la DIGITAL del cliente tiene plazo para subir el comprobante; las del admin, no
+        Instant paymentDeadline = caller.admin() ? null
+                : PaymentPolicy.deadlineFor(paymentMode, now, startsAt, settings.paymentWindow());
+        Booking booking = Booking.confirmNew(vehicle.id(), lines, startsAt,
+                toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(), caller.userId(), request.notes(), now,
+                paymentMode, paymentDeadline);
         Booking saved = bookings.save(booking, caller.userId());
 
         events.publish(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.id(), saved.code(),
@@ -353,9 +369,9 @@ public class BookingService implements BookingUseCase {
     @Override
     @Transactional(readOnly = true)
     public List<CancellationReason> cancellationReasons() {
-        // el motivo del sistema no se ofrece al cancelar a mano
+        // los motivos del sistema (EXPIRED, PAYMENT_TIMEOUT) no se ofrecen al cancelar a mano
         return bookings.findCancellationReasons().stream()
-                .filter(reason -> !EXPIRED_REASON.equals(reason.code()))
+                .filter(reason -> !reason.systemOnly())
                 .toList();
     }
 

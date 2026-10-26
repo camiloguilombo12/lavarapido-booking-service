@@ -36,10 +36,13 @@ public final class BookingDtos {
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
             @Size(max = 300) String notes,
             // RF-010: operario que eligió el cliente (opcional); operations-service lo asigna si está libre
-            @Positive Integer preferredOperatorId) {
+            @Positive Integer preferredOperatorId,
+            // "DIGITAL" | "CASH": obligatorio para el cliente (400 INVALID_PAYMENT_MODE lo responde el
+            // dominio, con su code); opcional para el admin
+            String paymentMode) {
 
         public BookingRequest toRequest() {
-            return new BookingRequest(vehicleId, serviceIds, date, time, notes, preferredOperatorId);
+            return new BookingRequest(vehicleId, serviceIds, date, time, notes, preferredOperatorId, paymentMode);
         }
     }
 
@@ -111,6 +114,8 @@ public final class BookingDtos {
     /**
      * La reserva lista para pintar. changeable dice si quien la ve todavia la puede cambiar o
      * cancelar (lo decide el backend con RF-007). ownerUserId solo llega en las rutas del admin.
+     * paymentMode es DIGITAL, CASH o null (reservas de antes o del admin sin modo); paymentDeadline, hasta
+     * cuando el cliente puede subir el comprobante (null si no tiene plazo); paymentReported, si ya lo subio.
      */
     public record BookingResponse(
             long id,
@@ -134,7 +139,10 @@ public final class BookingDtos {
             ReasonResponse cancellationReason,
             String notes,
             boolean changeable,
-            Instant createdAt) {
+            Instant createdAt,
+            String paymentMode,
+            Instant paymentDeadline,
+            boolean paymentReported) {
 
         public static BookingResponse from(BookingView view, boolean includeOwner) {
             Booking booking = view.booking();
@@ -160,7 +168,10 @@ public final class BookingDtos {
                     ReasonResponse.from(booking.cancellationReason()),
                     booking.notes(),
                     view.changeable(),
-                    booking.createdAt());
+                    booking.createdAt(),
+                    booking.paymentMode() == null ? null : booking.paymentMode().name(),
+                    booking.paymentDeadline(),
+                    booking.paymentReported());
         }
     }
 }

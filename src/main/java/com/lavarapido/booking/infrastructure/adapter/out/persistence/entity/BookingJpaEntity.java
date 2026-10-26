@@ -78,6 +78,16 @@ public class BookingJpaEntity {
     @Column(name = "deleted_by")
     private Long deletedBy;
 
+    // contrato de pago de la reserva (changelog 049): DIGITAL o CASH; null en las de antes
+    @Column(name = "payment_mode", length = 10)
+    private String paymentMode;
+
+    @Column(name = "payment_deadline")
+    private Instant paymentDeadline;
+
+    @Column(name = "payment_reported_at")
+    private Instant paymentReportedAt;
+
     @Version
     @Column(name = "row_version")
     private Integer rowVersion;
@@ -207,6 +217,30 @@ public class BookingJpaEntity {
 
     public void setDeletedBy(Long deletedBy) {
         this.deletedBy = deletedBy;
+    }
+
+    public String getPaymentMode() {
+        return paymentMode;
+    }
+
+    public void setPaymentMode(String paymentMode) {
+        this.paymentMode = paymentMode;
+    }
+
+    public Instant getPaymentDeadline() {
+        return paymentDeadline;
+    }
+
+    public void setPaymentDeadline(Instant paymentDeadline) {
+        this.paymentDeadline = paymentDeadline;
+    }
+
+    public Instant getPaymentReportedAt() {
+        return paymentReportedAt;
+    }
+
+    public void setPaymentReportedAt(Instant paymentReportedAt) {
+        this.paymentReportedAt = paymentReportedAt;
     }
 
     public Integer getRowVersion() {

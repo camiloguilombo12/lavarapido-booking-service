@@ -24,5 +24,10 @@ class CancellationReasonTest {
         assertTrue(reason("SHOP_ISSUE", false).selectableBy(true));
         assertFalse(reason("EXPIRED", false).selectableBy(true));
         assertFalse(reason("EXPIRED", false).selectableBy(false));
+        // D: el de la cancelación por falta de pago tampoco lo elige nadie
+        assertFalse(reason("PAYMENT_TIMEOUT", false).selectableBy(true));
+        assertFalse(reason("PAYMENT_TIMEOUT", false).selectableBy(false));
+        assertTrue(reason("PAYMENT_TIMEOUT", false).systemOnly());
+        assertFalse(reason("CUSTOMER_REQUEST", false).systemOnly());
     }
 }

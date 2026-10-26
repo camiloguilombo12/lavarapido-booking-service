@@ -86,6 +86,11 @@ app:
     # cierra operations-service como NO_SHOW (POST /internal/v1/bookings/{id}/no-show) pasado este
     # tiempo. Ya no hay tarea programada aqui (B-07): las reservas nacen confirmadas.
     expiry-grace-minutes: ${BOOKING_EXPIRY_GRACE_MINUTES:60}
+    # B: cuantas reservas activas en efectivo puede tener un cliente a la vez (409 CASH_BOOKING_LIMIT)
+    cash-active-limit: ${BOOKING_CASH_ACTIVE_LIMIT:1}
+    # D: cuanto tiene el cliente para subir el comprobante de una reserva DIGITAL (o hasta la hora de
+    # inicio, si es mas pronto); despues PaymentDeadlineJob la cancela con PAYMENT_TIMEOUT
+    payment-window: ${BOOKING_PAYMENT_WINDOW:30m}
 
 # Swagger apagado por defecto; application-dev.yml lo prende
 springdoc:

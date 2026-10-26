@@ -69,6 +69,14 @@ public final class BookingJpaRepositories {
                   AND (b.statusId = 3 OR (b.statusId IN (1, 2) AND b.scheduledEnd > :now))
                 """)
         long countActiveForVehicle(@Param("vehicleId") long vehicleId, @Param("now") Instant now);
+
+        /** B: activas (1, 2, 3) en efectivo que hizo ese usuario (el cliente que reserva). */
+        @Query("""
+                SELECT COUNT(b) FROM BookingJpaEntity b
+                WHERE b.deletedAt IS NULL AND b.bookedBy = :userId
+                  AND b.statusId IN (1, 2, 3) AND b.paymentMode = 'CASH'
+                """)
+        long countActiveCashBookedBy(@Param("userId") long userId);
     }
 
     public interface Lines extends JpaRepository<BookingServiceJpaEntity, Long> {

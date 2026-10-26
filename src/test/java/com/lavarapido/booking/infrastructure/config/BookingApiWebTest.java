@@ -173,6 +173,70 @@ class BookingApiWebTest {
     }
 
     @Test
+    void paymentModeTravelsToTheUseCaseAndTheViewShowsThePaymentTerms() throws Exception {
+        // contrato de pago: paymentMode llega tal cual; la vista trae paymentMode, paymentDeadline y paymentReported
+        java.time.Instant start = java.time.Instant.parse("2026-10-27T14:00:00Z");
+        java.time.Instant deadline = java.time.Instant.parse("2026-10-26T15:30:00Z");
+        com.lavarapido.booking.domain.model.Booking booking = com.lavarapido.booking.domain.model.Booking.restore(
+                99L, 5L, (short) 1, start, start.plusSeconds(3600),
+                com.lavarapido.booking.domain.model.BookingStatus.CONFIRMED, 7L, null, 0, java.math.BigDecimal.ZERO,
+                null, List.of(), start, com.lavarapido.booking.domain.model.PaymentMode.DIGITAL, deadline, null);
+        com.lavarapido.booking.domain.port.in.BookingView view = new com.lavarapido.booking.domain.port.in.BookingView(
+                booking, null, null, java.time.LocalDateTime.parse("2026-10-27T09:00"),
+                java.time.LocalDateTime.parse("2026-10-27T10:00"), true);
+        org.mockito.ArgumentCaptor<com.lavarapido.booking.domain.port.in.BookingRequest> request =
+                org.mockito.ArgumentCaptor.forClass(com.lavarapido.booking.domain.port.in.BookingRequest.class);
+        given(bookings.create(request.capture(), any())).willReturn(view);
+
+        mvc.perform(post("/api/v1/bookings")
+                        .header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"vehicleId":5,"serviceIds":[2],"date":"2026-10-27","time":"09:00","paymentMode":"DIGITAL"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentMode").value("DIGITAL"))
+                .andExpect(jsonPath("$.paymentDeadline").value("2026-10-26T15:30:00Z"))
+                .andExpect(jsonPath("$.paymentReported").value(false));
+        org.junit.jupiter.api.Assertions.assertEquals("DIGITAL", request.getValue().paymentMode());
+
+        // una reserva de antes del cambio: sin modo ni plazo
+        com.lavarapido.booking.domain.model.Booking legacy = com.lavarapido.booking.domain.model.Booking.restore(
+                98L, 5L, (short) 1, start, start.plusSeconds(3600),
+                com.lavarapido.booking.domain.model.BookingStatus.CONFIRMED, 7L, null, 0, java.math.BigDecimal.ZERO,
+                null, List.of(), start);
+        given(bookings.list(any(), any(), any(), any())).willReturn(List.of(new com.lavarapido.booking.domain.port.in.BookingView(
+                legacy, null, null, java.time.LocalDateTime.parse("2026-10-27T09:00"),
+                java.time.LocalDateTime.parse("2026-10-27T10:00"), true)));
+        mvc.perform(get("/api/v1/admin/bookings").header("Authorization", token(1L, "ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].paymentMode").doesNotExist())
+                .andExpect(jsonPath("$[0].paymentDeadline").doesNotExist())
+                .andExpect(jsonPath("$[0].paymentReported").value(false));
+    }
+
+    @Test
+    void paymentRuleErrorsKeepTheirCodes() throws Exception {
+        given(bookings.create(any(), any()))
+                .willThrow(new com.lavarapido.booking.domain.exception.InvalidValueException(
+                        "INVALID_PAYMENT_MODE", "Choose how the booking will be paid"))
+                .willThrow(new com.lavarapido.booking.domain.exception.ConflictException(
+                        "CASH_BOOKING_LIMIT", "limit"));
+        String body = """
+                {"vehicleId":5,"serviceIds":[2],"date":"2026-10-27","time":"09:00"}
+                """;
+
+        mvc.perform(post("/api/v1/bookings").header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PAYMENT_MODE"));
+        mvc.perform(post("/api/v1/bookings").header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CASH_BOOKING_LIMIT"));
+    }
+
+    @Test
     void invalidBodyIsAValidationError() throws Exception {
         mvc.perform(post("/api/v1/bookings")
                         .header("Authorization", token(7L, "CLIENT"))
