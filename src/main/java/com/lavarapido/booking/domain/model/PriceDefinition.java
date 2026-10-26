@@ -14,8 +14,9 @@ public record PriceDefinition(short vehicleTypeId, BigDecimal price, short estim
         if (vehicleTypeId <= 0) {
             throw new InvalidValueException("INVALID_VEHICLE_TYPE", "Vehicle type is required");
         }
-        if (price == null || price.signum() < 0 || price.compareTo(MAX_PRICE) > 0) {
-            throw new InvalidValueException("INVALID_PRICE", "Price must be zero or more");
+        // BIZ-04: una tarifa en 0 deja reservas que nadie puede pagar (payment no acepta montos en 0)
+        if (price == null || price.signum() <= 0 || price.compareTo(MAX_PRICE) > 0) {
+            throw new InvalidValueException("INVALID_PRICE", "Price must be greater than zero");
         }
         if (estimatedMinutes <= 0 || estimatedMinutes > MAX_MINUTES) {
             throw new InvalidValueException("INVALID_DURATION",

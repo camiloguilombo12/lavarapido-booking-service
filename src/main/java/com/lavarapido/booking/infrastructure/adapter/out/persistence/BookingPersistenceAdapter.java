@@ -5,6 +5,7 @@ import com.lavarapido.booking.domain.model.Booking;
 import com.lavarapido.booking.domain.model.BookingLine;
 import com.lavarapido.booking.domain.model.BookingStatus;
 import com.lavarapido.booking.domain.model.CancellationReason;
+import com.lavarapido.booking.domain.model.PaymentMode;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BookingJpaEntity;
 import com.lavarapido.booking.infrastructure.adapter.out.persistence.entity.BookingServiceJpaEntity;
@@ -93,6 +94,10 @@ class BookingPersistenceAdapter implements BookingRepository {
         entity.setStatusId(booking.status().id());
         entity.setCancellationReasonId(booking.cancellationReason() == null ? null : booking.cancellationReason().id());
         entity.setNotes(booking.notes());
+        // el modo y el plazo no cambian despues de crearla (reprogramar no los toca); el reporte si
+        entity.setPaymentMode(booking.paymentMode() == null ? null : booking.paymentMode().name());
+        entity.setPaymentDeadline(booking.paymentDeadline());
+        entity.setPaymentReportedAt(booking.paymentReportedAt());
         entity.setUpdatedBy(actor);
         BookingJpaEntity saved = bookings.saveAndFlush(entity);
         if (booking.id() == 0L) {
@@ -129,8 +134,23 @@ class BookingPersistenceAdapter implements BookingRepository {
     }
 
     @Override
-    public List<Booking> findNotStartedEndingBefore(Instant before) {
-        return toDomain(bookings.findNotStartedEndingBefore(before));
+    public long countActiveForVehicle(long customerVehicleId, Instant now) {
+        return bookings.countActiveForVehicle(customerVehicleId, now);
+    }
+
+    @Override
+    public List<Booking> findActiveEndingAfter(Instant from) {
+        return toDomain(bookings.findActiveEndingAfter(from));
+    }
+
+    @Override
+    public long countActiveCashBookedBy(long userId) {
+        return bookings.countActiveCashBookedBy(userId);
+    }
+
+    @Override
+    public List<Booking> findPaymentOverdue(Instant now) {
+        return toDomain(bookings.findPaymentOverdue(now));
     }
 
     @Override
@@ -181,6 +201,10 @@ class BookingPersistenceAdapter implements BookingRepository {
             } else if (entity.getDeletedAt() == null && entity.getQuantity() == line.quantity()) {
                 continue;
             }
+            // A-09: los puntos se congelan la primera vez; una línea que ya los tiene no cambia
+            if (entity.getLoyaltyPoints() == null) {
+                entity.setLoyaltyPoints(line.loyaltyPoints());
+            }
             entity.setQuantity(line.quantity());
             entity.setDeletedAt(null);
             entity.setDeletedBy(null);
@@ -219,18 +243,24 @@ class BookingPersistenceAdapter implements BookingRepository {
                     entity.getCancellationReasonId() == null ? null : reasonById.get(entity.getCancellationReasonId()),
                     entity.getPointsRedeemed() == null ? 0 : entity.getPointsRedeemed(),
                     entity.getPointsDiscountAmount() == null ? BigDecimal.ZERO : entity.getPointsDiscountAmount(),
-                    entity.getNotes(), bookingLines, entity.getCreatedAt()));
+                    entity.getNotes(), bookingLines, entity.getCreatedAt(),
+                    PaymentMode.fromColumn(entity.getPaymentMode()), entity.getPaymentDeadline(),
+                    entity.getPaymentReportedAt()));
         }
         return result;
     }
 
-    private static BookingLine toLine(BookingServiceJpaEntity line, ServicePriceJpaEntity price,
-                                      Map<Integer, ServiceJpaEntity> serviceById) {
+    static BookingLine toLine(BookingServiceJpaEntity line, ServicePriceJpaEntity price,
+                              Map<Integer, ServiceJpaEntity> serviceById) {
         ServiceJpaEntity service = serviceById.get(price.getServiceId());
+        // A-09: los puntos congelados de la línea; solo si faltan, los vigentes del catálogo
+        int points = line.getLoyaltyPoints() != null ? line.getLoyaltyPoints()
+                : service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints();
+        // BIZ-06: el tipo de vehiculo de la tarifa, para saber si al reprogramar se puede conservar
+        short vehicleTypeId = price.getVehicleTypeId() == null ? 0 : price.getVehicleTypeId();
         return new BookingLine(price.getId(), price.getServiceId(), service == null ? null : service.getCode(),
                 service == null ? null : service.getName(), price.getPrice(), price.getEstimatedMinutes(),
-                line.getQuantity(), line.getId(),
-                service == null || service.getLoyaltyPoints() == null ? 0 : service.getLoyaltyPoints());
+                line.getQuantity(), line.getId(), points, vehicleTypeId);
     }
 
     private static CancellationReason toReason(CancellationReasonJpaEntity entity) {

@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,9 +23,9 @@ class BookingTest {
     private static final Instant START = Instant.parse("2026-10-01T14:00:00Z");
     private static final Instant END = Instant.parse("2026-10-01T15:15:00Z");
     private static final BookingLine PREMIUM =
-            new BookingLine(10L, 2, "PREMIUM", "Premium", new BigDecimal("35000"), (short) 75, (short) 1, 30);
+            new BookingLine(10L, 2, "PREMIUM", "Premium", new BigDecimal("35000"), (short) 75, (short) 1, 30, (short) 3);
     private static final BookingLine BASIC =
-            new BookingLine(11L, 1, "BASIC", "Basico", new BigDecimal("20000"), (short) 45, (short) 1, 10);
+            new BookingLine(11L, 1, "BASIC", "Basico", new BigDecimal("20000"), (short) 45, (short) 1, 10, (short) 3);
     private static final CancellationReason CUSTOMER =
             new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false);
 
@@ -60,6 +61,20 @@ class BookingTest {
         Booking booking = confirmed();
         booking.assignId(42L);
         assertEquals("RES-000042", booking.code());
+    }
+
+    @Test
+    @DisplayName("E-01, RN-EXEC-01 / INV-EXEC-004: el operario inicia desde 15 minutos antes, no antes")
+    void operatorStartsFromFifteenMinutesBefore() {
+        Booking early = confirmed();
+        ConflictException tooEarly = assertThrows(ConflictException.class,
+                () -> early.startByOperator(START.minus(Duration.ofMinutes(16))));
+        assertEquals("SERVICE_TOO_EARLY", tooEarly.code());
+        assertEquals(BookingStatus.CONFIRMED, early.status());
+
+        Booking onTime = confirmed();
+        onTime.startByOperator(START.minus(Duration.ofMinutes(15)));
+        assertEquals(BookingStatus.IN_PROGRESS, onTime.status());
     }
 
     @Test
@@ -116,6 +131,21 @@ class BookingTest {
     }
 
     @Test
+    @DisplayName("B-07: una reserva nace y se reprograma CONFIRMED; una SCHEDULED vieja pasa a CONFIRMED al moverla")
+    void bookingsNeverStayScheduled() {
+        Booking booking = confirmed();
+        Instant newStart = START.plusSeconds(3600 * 2);
+        booking.reschedule(List.of(PREMIUM), newStart, newStart.plusSeconds(75 * 60), (short) 2, null);
+        Booking legacy = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
+                BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
+        legacy.reschedule(List.of(PREMIUM), newStart, newStart.plusSeconds(75 * 60), (short) 2, null);
+
+        // por eso no hay tarea que cierre programadas vencidas: las confirmadas sin operario las cierra operations
+        assertEquals(BookingStatus.CONFIRMED, booking.status());
+        assertEquals(BookingStatus.CONFIRMED, legacy.status());
+    }
+
+    @Test
     @DisplayName("un horario con la pausa fuera del dia no es valido")
     void businessHourValidatesBreak() {
         assertThrows(InvalidValueException.class, () -> new BusinessHour((short) 1, true,
@@ -138,21 +168,6 @@ class BookingTest {
     }
 
     @Test
-    @DisplayName("al vencer, solo la programada se cancela sola, con el motivo del sistema")
-    void onlyAScheduledBookingExpiresByItself() {
-        CancellationReason expired = new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false);
-        Booking scheduled = Booking.restore(8L, 5L, null, START, END, BookingStatus.SCHEDULED, 7L, null, 0,
-                BigDecimal.ZERO, null, List.of(PREMIUM), NOW);
-
-        scheduled.expire(expired);
-
-        assertEquals(BookingStatus.CANCELLED, scheduled.status());
-        assertEquals("EXPIRED", scheduled.cancellationReason().code());
-        // una confirmada pudo atenderse sin registrarse: no se cierra sola
-        assertThrows(ConflictException.class, () -> confirmed().expire(expired));
-    }
-
-    @Test
     @DisplayName("una confirmada sin operario queda NO_SHOW solo despues de la hora de fin mas el margen")
     void anUnattendedBookingIsClosedOnlyOnceExpired() {
         Booking booking = confirmed();
@@ -165,5 +180,72 @@ class BookingTest {
         booking.markUnattended(END.plus(hour), hour);
         assertEquals(BookingStatus.NO_SHOW, booking.status());
         assertThrows(ConflictException.class, () -> booking.markUnattended(END.plus(hour), hour));
+    }
+
+    private static Booking digital(BookingStatus status, Instant deadline, Instant reportedAt) {
+        return Booking.restore(9L, 5L, (short) 1, START, END, status, 7L, null, 0, BigDecimal.ZERO, null,
+                List.of(PREMIUM), NOW, PaymentMode.DIGITAL, deadline, reportedAt);
+    }
+
+    @Test
+    @DisplayName("contrato de pago: una reserva nueva guarda el modo y el plazo, y nace sin reporte")
+    void newBookingKeepsThePaymentTerms() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+        Booking booking = Booking.confirmNew(5L, List.of(PREMIUM), START, END, (short) 1, 7L, null, NOW,
+                PaymentMode.DIGITAL, deadline);
+
+        assertEquals(PaymentMode.DIGITAL, booking.paymentMode());
+        assertEquals(deadline, booking.paymentDeadline());
+        assertFalse(booking.paymentReported());
+        // las de antes del cambio no tienen modo y nunca vencen
+        assertNull(confirmed().paymentMode());
+        assertFalse(confirmed().paymentOverdue(START));
+    }
+
+    @Test
+    @DisplayName("D: vence solo la DIGITAL sin reporte, con el plazo cumplido y que aún se puede cancelar")
+    void paymentOverdue() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+
+        assertFalse(digital(BookingStatus.CONFIRMED, deadline, null).paymentOverdue(deadline.minusSeconds(1)));
+        assertTrue(digital(BookingStatus.CONFIRMED, deadline, null).paymentOverdue(deadline));
+        assertTrue(digital(BookingStatus.SCHEDULED, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        // con comprobante, ya empezada o ya cancelada no vence
+        assertFalse(digital(BookingStatus.CONFIRMED, deadline, NOW).paymentOverdue(deadline.plusSeconds(60)));
+        assertFalse(digital(BookingStatus.IN_PROGRESS, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        assertFalse(digital(BookingStatus.CANCELLED, deadline, null).paymentOverdue(deadline.plusSeconds(60)));
+        // sin plazo (la creó el admin) o en efectivo nunca vence
+        assertFalse(digital(BookingStatus.CONFIRMED, null, null).paymentOverdue(END));
+        Booking cash = Booking.confirmNew(5L, List.of(PREMIUM), START, END, (short) 1, 7L, null, NOW,
+                PaymentMode.CASH, null);
+        assertFalse(cash.paymentOverdue(END));
+    }
+
+    @Test
+    @DisplayName("el reporte del pago se guarda una sola vez y no toca una cancelada")
+    void paymentReportedIsIdempotent() {
+        Booking booking = digital(BookingStatus.CONFIRMED, NOW.plusSeconds(1800), null);
+        Instant first = NOW.plusSeconds(60);
+
+        assertTrue(booking.markPaymentReported(first));
+        assertFalse(booking.markPaymentReported(first.plusSeconds(60)));
+        assertEquals(first, booking.paymentReportedAt());
+        assertTrue(booking.paymentReported());
+
+        Booking cancelled = digital(BookingStatus.CANCELLED, NOW.plusSeconds(1800), null);
+        assertFalse(cancelled.markPaymentReported(first));
+        assertFalse(cancelled.paymentReported());
+    }
+
+    @Test
+    @DisplayName("regla 7: reprogramar no cambia ni el modo ni el plazo")
+    void rescheduleKeepsThePaymentTerms() {
+        Instant deadline = NOW.plus(Duration.ofMinutes(30));
+        Booking booking = digital(BookingStatus.CONFIRMED, deadline, null);
+
+        booking.reschedule(List.of(PREMIUM), START.plusSeconds(3600), END.plusSeconds(3600), (short) 2, null);
+
+        assertEquals(PaymentMode.DIGITAL, booking.paymentMode());
+        assertEquals(deadline, booking.paymentDeadline());
     }
 }

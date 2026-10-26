@@ -96,6 +96,14 @@ class RabbitDomainEventPublisher implements DomainEventPublisher {
         if (event.reason() != null) {
             payload.put("reason", event.reason());
         }
+        // A-20 / OPS-10: el codigo del motivo, ademas del texto (BookingCancelled)
+        if (event.reasonCode() != null) {
+            payload.put("reasonCode", event.reasonCode());
+        }
+        // A-11: estado nuevo de la reserva (BookingStatusChanged)
+        if (event.status() != null) {
+            payload.put("status", event.status());
+        }
         return payload;
     }
 }

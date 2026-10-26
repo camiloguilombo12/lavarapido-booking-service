@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -13,7 +14,12 @@ import java.time.Instant;
 /**
  * La fila de booking.booking. Sin total a proposito: se calcula con sus lineas.
  *
- * updated_at y row_version los pone el trigger de la tabla, nunca esta clase.
+ * updated_at lo pone el trigger de la tabla, nunca esta clase.
+ *
+ * row_version es la version para el bloqueo optimista (BIZ-09, E-11): Hibernate la sube en cada
+ * UPDATE y lo hace con WHERE row_version = la que leyo. Si otra peticion cambio la reserva entre la
+ * lectura y el guardado (por ejemplo, la cancelo), no se pisa: sale 409 CONFLICT. Desde el changelog
+ * 045 el trigger tr_touch_booking ya no la sube cuando el UPDATE la trae cambiada.
  */
 @Entity
 @Table(schema = "booking", name = "booking")
@@ -72,7 +78,18 @@ public class BookingJpaEntity {
     @Column(name = "deleted_by")
     private Long deletedBy;
 
-    @Column(name = "row_version", insertable = false, updatable = false)
+    // contrato de pago de la reserva (changelog 049): DIGITAL o CASH; null en las de antes
+    @Column(name = "payment_mode", length = 10)
+    private String paymentMode;
+
+    @Column(name = "payment_deadline")
+    private Instant paymentDeadline;
+
+    @Column(name = "payment_reported_at")
+    private Instant paymentReportedAt;
+
+    @Version
+    @Column(name = "row_version")
     private Integer rowVersion;
 
     public BookingJpaEntity() {
@@ -200,6 +217,30 @@ public class BookingJpaEntity {
 
     public void setDeletedBy(Long deletedBy) {
         this.deletedBy = deletedBy;
+    }
+
+    public String getPaymentMode() {
+        return paymentMode;
+    }
+
+    public void setPaymentMode(String paymentMode) {
+        this.paymentMode = paymentMode;
+    }
+
+    public Instant getPaymentDeadline() {
+        return paymentDeadline;
+    }
+
+    public void setPaymentDeadline(Instant paymentDeadline) {
+        this.paymentDeadline = paymentDeadline;
+    }
+
+    public Instant getPaymentReportedAt() {
+        return paymentReportedAt;
+    }
+
+    public void setPaymentReportedAt(Instant paymentReportedAt) {
+        this.paymentReportedAt = paymentReportedAt;
     }
 
     public Integer getRowVersion() {

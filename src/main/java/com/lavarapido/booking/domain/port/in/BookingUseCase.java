@@ -35,6 +35,12 @@ public interface BookingUseCase {
 
     List<BookingView> listForService(LocalDate from, LocalDate to);
 
+    /**
+     * BIZ-08: cuantas reservas activas tiene el vehiculo (en curso, o programadas/confirmadas que no
+     * han terminado). customer-service lo pregunta antes de dejar retirar el vehiculo.
+     */
+    long activeBookingsOf(long customerVehicleId);
+
     /** Reservas de un día (por defecto hoy, en la hora del lavadero) frente al día anterior. Solo admin. */
     DaySummary daySummary(LocalDate date, Caller caller);
 
@@ -55,15 +61,29 @@ public interface BookingUseCase {
     List<CancellationReason> cancellationReasons();
 
     /**
-     * Cancela las reservas programadas que terminaron hace mas del margen sin confirmarse (lo llama
-     * una tarea programada). Las confirmadas no: esas las decide operations-service segun haya o no
-     * operario asignado. Devuelve cuantas cerro.
-     */
-    int closeExpired();
-
-    /**
      * operations-service la pide para una confirmada vencida que nunca tuvo operario: nadie pudo
      * atenderla, queda NO_SHOW. 409 BOOKING_NOT_EXPIRED si no esta confirmada o aun no vence.
      */
     BookingView markUnattended(long bookingId);
+
+    /**
+     * D: ids de las reservas DIGITAL activas sin comprobante cuyo plazo ya paso. PaymentDeadlineJob
+     * las cancela una por una con cancelForPaymentTimeout.
+     */
+    List<Long> paymentOverdueBookings();
+
+    /**
+     * D: antes de cancelar le pregunta a payment-service si ya hay pago (adenda). Si lo hay, lo marca
+     * como reportado y no cancela (PAYMENT_REPORTED). Si payment dice que no, cancela con PAYMENT_TIMEOUT
+     * por el mismo camino que una cancelacion normal (publica BookingCancelled). Si la reserva ya no
+     * vence, NOT_OVERDUE. Si payment no responde, DependencyUnavailableException y no se toca nada; un
+     * choque de row_version sale como OptimisticLockingFailureException.
+     */
+    PaymentTimeoutOutcome cancelForPaymentTimeout(long bookingId);
+
+    /**
+     * payment-service avisa que el cliente reporto el pago (payment.reported) o que se aprobo
+     * (payment.confirmed): se guarda payment_reported_at una sola vez.
+     */
+    PaymentReportOutcome recordPaymentReported(long bookingId);
 }

@@ -45,6 +45,16 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # D: un aviso de pago que falla (base caida) se reintenta 3 veces con espera creciente y luego
+        # va a la DLQ booking.payment-events.dlq, como en operations y notification
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
 
 server:
   port: ${PORT:3003}
@@ -73,6 +83,11 @@ app:
     # de aqui se valida que el vehiculo sea del cliente (REST, ADR-004)
     base-url: ${CUSTOMER_SERVICE_URL:http://localhost:3002/api/v1}
     timeout: ${CUSTOMER_SERVICE_TIMEOUT:3s}
+  payment-service:
+    # PaymentDeadlineJob pregunta aqui si la reserva ya tiene pago antes de cancelarla (adenda D); va con
+    # la llave interna (INTERNAL_API_KEY). Sin respuesta en este tiempo, no cancela en esa vuelta
+    base-url: ${PAYMENT_SERVICE_URL:http://localhost:3005}
+    timeout: 3s
   booking:
     # zona horaria del lavadero: el horario y las fechas que ve el cliente estan en esta hora
     zone: ${BOOKING_ZONE:America/Bogota}
@@ -82,12 +97,19 @@ app:
     max-days-ahead: ${BOOKING_MAX_DAYS_AHEAD:60}
     # cuantas horas alternativas se ofrecen si la pedida esta ocupada (RF-006)
     alternatives: 5
-    # una reserva que nunca se inicio se cierra sola este tiempo despues de su hora de fin:
-    # confirmada -> NO_SHOW, programada -> CANCELLED (motivo EXPIRED)
+    # margen despues de la hora de fin: una confirmada que nunca se inicio y no tuvo operario la
+    # cierra operations-service como NO_SHOW (POST /internal/v1/bookings/{id}/no-show) pasado este
+    # tiempo. Ya no hay tarea programada aqui (B-07): las reservas nacen confirmadas.
     expiry-grace-minutes: ${BOOKING_EXPIRY_GRACE_MINUTES:60}
-    expiry-check:
-      enabled: ${BOOKING_EXPIRY_CHECK_ENABLED:true}
-      interval: ${BOOKING_EXPIRY_CHECK_INTERVAL:PT5M}
+    # B: cuantas reservas activas en efectivo puede tener un cliente a la vez (409 CASH_BOOKING_LIMIT)
+    cash-active-limit: ${BOOKING_CASH_ACTIVE_LIMIT:1}
+    # D: cuanto tiene el cliente para subir el comprobante de una reserva DIGITAL (o hasta la hora de
+    # inicio, si es mas pronto); despues PaymentDeadlineJob la cancela con PAYMENT_TIMEOUT
+    payment-window: ${BOOKING_PAYMENT_WINDOW:30m}
+    # D: PaymentDeadlineJob cancela con PAYMENT_TIMEOUT las DIGITAL vencidas sin comprobante, cada interval
+    payment-expiry:
+      enabled: ${BOOKING_PAYMENT_EXPIRY_ENABLED:true}
+      interval: ${BOOKING_PAYMENT_EXPIRY_INTERVAL:60s}
 
 # Swagger apagado por defecto; application-dev.yml lo prende
 springdoc:

@@ -14,6 +14,7 @@ import com.lavarapido.booking.domain.model.CancellationReason;
 import com.lavarapido.booking.domain.model.CatalogItem;
 import com.lavarapido.booking.domain.model.DayWindow;
 import com.lavarapido.booking.domain.model.HoursException;
+import com.lavarapido.booking.domain.model.PaymentMode;
 import com.lavarapido.booking.domain.model.ServiceBay;
 import com.lavarapido.booking.domain.model.ServicePrice;
 import com.lavarapido.booking.domain.model.VehicleSnapshot;
@@ -22,6 +23,9 @@ import com.lavarapido.booking.domain.port.in.BookingUseCase;
 import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.domain.port.in.Caller;
 import com.lavarapido.booking.domain.port.in.DayAvailability;
+import com.lavarapido.booking.domain.port.in.PaymentReportOutcome;
+import com.lavarapido.booking.domain.port.in.PaymentTimeoutOutcome;
+import com.lavarapido.booking.domain.port.out.PaymentStatusDirectory;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.CatalogRepository;
@@ -31,6 +35,7 @@ import com.lavarapido.booking.domain.port.out.ScheduleRepository;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Occupancy;
 import com.lavarapido.booking.domain.service.AvailabilityPolicy.Slot;
+import com.lavarapido.booking.domain.service.PaymentPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +46,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -67,9 +73,9 @@ public class BookingService implements BookingUseCase {
 
     private static final short DEFAULT_QUANTITY = 1;
     private static final String CUSTOMER_CANCEL_REASON = "CUSTOMER_REQUEST";
-    // motivo con el que el sistema cancela una reserva programada que vencio sin confirmarse
+    // motivo del sistema (seed 112); reservas viejas pueden tenerlo, pero nadie lo elige a mano
     static final String EXPIRED_REASON = "EXPIRED";
-    // la tarea programada no es un usuario
+    // el cierre que pide operations-service (no asistio) no lo hace un usuario
     private static final long SYSTEM_ACTOR = 0L;
     private static final long MAX_LIST_DAYS = 62;
     // quien llama por la llave interna: ve todo, como el admin, pero no cambia nada
@@ -83,10 +89,11 @@ public class BookingService implements BookingUseCase {
     private final DomainEventPublisher events;
     private final BookingSettings settings;
     private final Clock clock;
+    private final PaymentStatusDirectory payments;
 
     public BookingService(BookingRepository bookings, CatalogRepository catalog, ScheduleRepository schedule,
                           BayRepository bays, CustomerDirectory customers, DomainEventPublisher events,
-                          BookingSettings settings, Clock clock) {
+                          BookingSettings settings, Clock clock, PaymentStatusDirectory payments) {
         this.bookings = bookings;
         this.catalog = catalog;
         this.schedule = schedule;
@@ -95,6 +102,7 @@ public class BookingService implements BookingUseCase {
         this.events = events;
         this.settings = settings;
         this.clock = clock;
+        this.payments = payments;
     }
 
     // ------------------------------------------------------------------ disponibilidad
@@ -120,6 +128,9 @@ public class BookingService implements BookingUseCase {
         if (request.vehicleId() == null) {
             throw new InvalidValueException("VEHICLE_REQUIRED", "Choose a vehicle");
         }
+        // contrato de pago: el cliente siempre dice como paga (400 INVALID_PAYMENT_MODE); el admin, si quiere
+        PaymentMode paymentMode = caller.admin() ? PaymentMode.ofOptional(request.paymentMode())
+                : PaymentMode.of(request.paymentMode());
         VehicleSnapshot vehicle = requireVehicle(request.vehicleId(), caller);
         List<BookingLine> lines = linesFor(request.serviceIds(), vehicle.vehicleTypeId());
         Instant now = clock.instant();
@@ -128,8 +139,19 @@ public class BookingService implements BookingUseCase {
         Slot slot = requireFreeSlot(request.date(), request.time(), lines, 0L);
         LocalDateTime start = request.date().atTime(slot.time());
         requireVehicleFree(vehicle.id(), start, start.plusMinutes(durationOf(lines)), 0L);
-        Booking booking = Booking.confirmNew(vehicle.id(), lines, toInstant(start),
-                toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(), caller.userId(), request.notes(), now);
+        // B: con la agenda bloqueada, asi dos reservas en efectivo al mismo tiempo no pasan las dos.
+        // Las que crea el admin no tienen limite (cliente por telefono o que llega al lavadero)
+        if (!caller.admin() && paymentMode == PaymentMode.CASH) {
+            PaymentPolicy.requireCashAllowed(bookings.countActiveCashBookedBy(caller.userId()),
+                    settings.cashActiveLimit());
+        }
+        Instant startsAt = toInstant(start);
+        // D: solo la DIGITAL del cliente tiene plazo para subir el comprobante; las del admin, no
+        Instant paymentDeadline = caller.admin() ? null
+                : PaymentPolicy.deadlineFor(paymentMode, now, startsAt, settings.paymentWindow());
+        Booking booking = Booking.confirmNew(vehicle.id(), lines, startsAt,
+                toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(), caller.userId(), request.notes(), now,
+                paymentMode, paymentDeadline);
         Booking saved = bookings.save(booking, caller.userId());
 
         events.publish(new BookingEvent(BookingEvent.Type.CONFIRMED, saved.id(), saved.code(),
@@ -142,13 +164,20 @@ public class BookingService implements BookingUseCase {
     public BookingView reschedule(long bookingId, BookingRequest request, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         requireChangeableBy(booking, caller);
+        List<Integer> currentServiceIds = booking.lines().stream().map(BookingLine::serviceId).toList();
+        boolean changesServices = request.serviceIds() != null && !request.serviceIds().isEmpty()
+                && !new HashSet<>(request.serviceIds()).equals(new HashSet<>(currentServiceIds));
+        // BIZ-01: el cliente solo cambia fecha y hora. Otros servicios cambian el cobro y el pago que
+        // ya reportó no se entera; eso lo hace el admin (la web le advierte)
+        if (changesServices && !caller.admin()) {
+            throw new ConflictException("BOOKING_SERVICES_LOCKED",
+                    "A customer can only change the date and time of a booking");
+        }
         VehicleSnapshot vehicle = vehicleOf(booking, caller);
         if (vehicle == null) {
             throw new NotFoundException("VEHICLE_NOT_FOUND", "The vehicle of this booking no longer exists");
         }
-        List<Integer> serviceIds = request.serviceIds() == null || request.serviceIds().isEmpty()
-                ? booking.lines().stream().map(BookingLine::serviceId).toList()
-                : request.serviceIds();
+        List<Integer> serviceIds = changesServices ? request.serviceIds() : currentServiceIds;
         List<BookingLine> lines = keepFrozenPrices(booking, linesFor(serviceIds, vehicle.vehicleTypeId()));
 
         bookings.lockSchedule();
@@ -167,13 +196,98 @@ public class BookingService implements BookingUseCase {
     public BookingView cancel(long bookingId, String reasonCode, Caller caller) {
         Booking booking = requireVisible(bookingId, caller);
         requireChangeableBy(booking, caller);
-        String code = caller.admin() && reasonCode != null && !reasonCode.isBlank() ? reasonCode : CUSTOMER_CANCEL_REASON;
-        booking.cancel(requireReason(code));
-        Booking saved = bookings.save(booking, caller.userId());
+        // A-20: el motivo elegido (sin motivo, CUSTOMER_REQUEST); quién puede elegir cada uno lo decide el dominio
+        String code = reasonCode != null && !reasonCode.isBlank() ? reasonCode.strip() : CUSTOMER_CANCEL_REASON;
+        CancellationReason reason = requireReason(code);
+        if (!reason.selectableBy(caller.admin())) {
+            throw new InvalidValueException("INVALID_CANCELLATION_REASON", "This cancellation reason cannot be chosen here");
+        }
+        // E-11: con la agenda bloqueada, como reprogramar; si otro la cambio despues de leerla,
+        // row_version (@Version) no la deja pisar y sale 409
+        bookings.lockSchedule();
+        Booking saved = cancelAndSave(booking, reason, caller.userId());
 
         VehicleSnapshot vehicle = vehicleOf(saved, caller);
-        publish(BookingEvent.Type.CANCELLED, saved, customerUserOf(vehicle, caller), saved.cancellationReason().name());
+        publishCancelled(saved, customerUserOf(vehicle, caller));
         return view(saved, vehicle, caller);
+    }
+
+    /** El camino de toda cancelacion: el dominio la cancela con su motivo y se guarda (row_version). */
+    private Booking cancelAndSave(Booking booking, CancellationReason reason, long actor) {
+        booking.cancel(reason);
+        return bookings.save(booking, actor);
+    }
+
+    /** BookingCancelled: A-20 / OPS-10, el texto del motivo y tambien su codigo. */
+    private void publishCancelled(Booking saved, Long customerUserId) {
+        CancellationReason chosen = saved.cancellationReason();
+        events.publish(new BookingEvent(BookingEvent.Type.CANCELLED, saved.id(), saved.code(),
+                customerUserId, saved.customerVehicleId(), saved.scheduledStart(),
+                saved.serviceBayId(), chosen.name(), clock.instant(), null, null, chosen.code()));
+    }
+
+    // ------------------------------------------------------------------ pago de la reserva (D)
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> paymentOverdueBookings() {
+        Instant now = clock.instant();
+        // la consulta ya filtra; el dominio tiene la ultima palabra (la misma regla que al cancelar)
+        return bookings.findPaymentOverdue(now).stream()
+                .filter(booking -> booking.paymentOverdue(now))
+                .map(Booking::id)
+                .toList();
+    }
+
+    @Override
+    public PaymentTimeoutOutcome cancelForPaymentTimeout(long bookingId) {
+        // Adenda: el aviso payment.reported puede perderse (no hay Outbox), asi que antes de cancelar se le
+        // pregunta a payment. Se pregunta antes de tomar el candado para no tener la agenda bloqueada
+        // mientras se espera la respuesta. Si payment no responde, sale DependencyUnavailableException y
+        // la reserva no se cancela en esta vuelta (el job la vuelve a mirar en la siguiente)
+        boolean reported = payments.paymentReported(bookingId);
+
+        // con la agenda bloqueada antes de leer, como el resto de cambios; asi el comprobante que llega
+        // al mismo tiempo (recordPaymentReported) se atiende antes o despues, nunca a la mitad
+        bookings.lockSchedule();
+        Optional<Booking> found = bookings.findById(bookingId);
+        Instant now = clock.instant();
+        if (found.isEmpty() || !found.get().paymentOverdue(now)) {
+            // ya llego el comprobante, ya empezo o ya se cancelo: no hay nada que hacer
+            return PaymentTimeoutOutcome.NOT_OVERDUE;
+        }
+        Booking booking = found.get();
+        if (reported) {
+            // payment tiene el pago: se marca como lo haria el consumidor y no se cancela
+            booking.markPaymentReported(now);
+            bookings.save(booking, SYSTEM_ACTOR);
+            return PaymentTimeoutOutcome.PAYMENT_REPORTED;
+        }
+        // solo con reported=false explicito
+        Booking saved = cancelAndSave(booking, requireReason(CancellationReason.PAYMENT_TIMEOUT), SYSTEM_ACTOR);
+        // solo una reserva del cliente tiene plazo (regla 5), asi que quien la hizo es el cliente; el
+        // job no tiene token para preguntarle a customer-service por el dueño del vehiculo
+        publishCancelled(saved, saved.bookedBy());
+        return PaymentTimeoutOutcome.CANCELLED;
+    }
+
+    @Override
+    public PaymentReportOutcome recordPaymentReported(long bookingId) {
+        // con la agenda bloqueada: no se cruza con PaymentDeadlineJob cancelando la misma reserva
+        bookings.lockSchedule();
+        Optional<Booking> found = bookings.findById(bookingId);
+        if (found.isEmpty()) {
+            return PaymentReportOutcome.NOT_FOUND;
+        }
+        Booking booking = found.get();
+        if (booking.status() == BookingStatus.CANCELLED) {
+            return PaymentReportOutcome.CANCELLED;
+        }
+        if (!booking.markPaymentReported(clock.instant())) {
+            return PaymentReportOutcome.ALREADY_REPORTED;
+        }
+        bookings.save(booking, SYSTEM_ACTOR);
+        return PaymentReportOutcome.RECORDED;
     }
 
     @Override
@@ -182,6 +296,24 @@ public class BookingService implements BookingUseCase {
         if (status == BookingStatus.CANCELLED) {
             return cancel(bookingId, reasonCode, caller);
         }
+        BookingView view = moveStatus(bookingId, status, caller);
+        // A-11: el cliente se entera del cambio que hizo el administrador
+        Booking saved = view.booking();
+        Long customer = customerUserOf(view.vehicle(), caller);
+        if (status == BookingStatus.CONFIRMED) {
+            publish(BookingEvent.Type.CONFIRMED, saved, customer, null);
+        } else {
+            events.publish(new BookingEvent(BookingEvent.Type.STATUS_CHANGED, saved.id(), saved.code(), customer,
+                    saved.customerVehicleId(), saved.scheduledStart(), saved.serviceBayId(), null, clock.instant(),
+                    null, status.name()));
+        }
+        return view;
+    }
+
+    /** Mueve el estado sin avisar (el avance del operario lo avisa operations-service). */
+    private BookingView moveStatus(long bookingId, BookingStatus status, Caller caller) {
+        // E-11: se bloquea la agenda antes de leer, asi el cambio se hace sobre la reserva vigente
+        bookings.lockSchedule();
         Booking booking = requireBooking(bookingId);
         booking.moveTo(status);
         Booking saved = bookings.save(booking, caller.userId());
@@ -232,6 +364,15 @@ public class BookingService implements BookingUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public long activeBookingsOf(long customerVehicleId) {
+        if (customerVehicleId <= 0) {
+            throw new InvalidValueException("INVALID_VEHICLE", "customerVehicleId must be greater than zero");
+        }
+        return bookings.countActiveForVehicle(customerVehicleId, clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public DaySummary daySummary(LocalDate date, Caller caller) {
         requireAdmin(caller);
         LocalDate day = date == null ? today() : date;
@@ -264,10 +405,10 @@ public class BookingService implements BookingUseCase {
                 .toList();
     }
 
-    // ------------------------------------------------------------------ operario (TEMPORAL)
-    // Mientras no exista operations-service, el operario trabaja sobre las reservas del dia.
-    // El rol OPERATOR ya lo exigio SecurityConfig; aqui se le trata como personal del lavadero
-    // (ve todas las reservas) pero solo puede mover el estado hacia adelante.
+    // ------------------------------------------------------------------ operario
+    // Solo llega operations-service (rol OPERATOR/ADMIN + llave interna, E-01), que filtra las
+    // reservas asignadas al operario. Aqui se le trata como personal del lavadero (lectura) y solo
+    // puede mover el estado hacia adelante.
 
     @Override
     @Transactional(readOnly = true)
@@ -285,7 +426,18 @@ public class BookingService implements BookingUseCase {
         if (status != BookingStatus.IN_PROGRESS && status != BookingStatus.COMPLETED) {
             throw new InvalidValueException("INVALID_STATUS", "An operator can only start or complete a booking");
         }
-        return changeStatus(bookingId, status, null, staff(caller));
+        // solo llega desde operations-service (llave interna, E-01), que ya validó que la reserva
+        // está asignada a este operario; aquí se cuida la hora de inicio (RN-EXEC-01).
+        // E-11: con la agenda bloqueada, como el resto de cambios de una reserva
+        bookings.lockSchedule();
+        Booking booking = requireBooking(bookingId);
+        if (status == BookingStatus.IN_PROGRESS) {
+            booking.startByOperator(clock.instant());
+        } else {
+            booking.moveTo(status);
+        }
+        Booking saved = bookings.save(booking, caller.userId());
+        return view(saved, vehicleOf(saved, staff(caller)), staff(caller));
     }
 
     private static Caller staff(Caller caller) {
@@ -295,33 +447,10 @@ public class BookingService implements BookingUseCase {
     @Override
     @Transactional(readOnly = true)
     public List<CancellationReason> cancellationReasons() {
-        // el motivo del sistema no se ofrece al cancelar a mano
+        // los motivos del sistema (EXPIRED, PAYMENT_TIMEOUT) no se ofrecen al cancelar a mano
         return bookings.findCancellationReasons().stream()
-                .filter(reason -> !EXPIRED_REASON.equals(reason.code()))
+                .filter(reason -> !reason.systemOnly())
                 .toList();
-    }
-
-    @Override
-    public int closeExpired() {
-        Instant now = clock.instant();
-        // con la agenda bloqueada: nadie reprograma la misma reserva mientras se cierra
-        bookings.lockSchedule();
-        // solo las programadas: una confirmada pudo atenderse sin registrarse (la decide operations)
-        List<Booking> expired = bookings.findNotStartedEndingBefore(now.minus(settings.expiryGrace())).stream()
-                .filter(booking -> booking.status() == BookingStatus.SCHEDULED)
-                .filter(booking -> booking.isExpired(now, settings.expiryGrace()))
-                .toList();
-        if (expired.isEmpty()) {
-            return 0;
-        }
-        CancellationReason systemReason = requireReason(EXPIRED_REASON);
-        for (Booking booking : expired) {
-            booking.expire(systemReason);
-            Booking saved = bookings.save(booking, SYSTEM_ACTOR);
-            // notification-service cancela los recordatorios que quedaran pendientes
-            publish(BookingEvent.Type.CANCELLED, saved, null, systemReason.name());
-        }
-        return expired.size();
     }
 
     @Override
@@ -352,7 +481,7 @@ public class BookingService implements BookingUseCase {
             ServicePrice price = item.priceFor(vehicleTypeId).orElseThrow(() -> new ConflictException(
                     "SERVICE_NOT_AVAILABLE_FOR_VEHICLE", "Service " + item.code() + " has no price for this vehicle type"));
             lines.add(new BookingLine(price.id(), item.id(), item.code(), item.name(), price.price(),
-                    price.estimatedMinutes(), DEFAULT_QUANTITY, item.loyaltyPoints()));
+                    price.estimatedMinutes(), DEFAULT_QUANTITY, item.loyaltyPoints(), price.vehicleTypeId()));
         }
         return lines;
     }
@@ -360,11 +489,16 @@ public class BookingService implements BookingUseCase {
     /**
      * Al reprogramar, los servicios que ya estaban conservan la tarifa con la que se reservaron
      * (INV-BOOK-008): subir un precio no le cambia el cobro a quien ya tenia su reserva.
+     * BIZ-06: solo si esa tarifa es del mismo tipo de vehiculo. Si el vehiculo cambio de tipo (de moto
+     * a camioneta), va la tarifa vigente del tipo nuevo, con su precio y su duracion.
      */
     private static List<BookingLine> keepFrozenPrices(Booking booking, List<BookingLine> current) {
         Map<Integer, BookingLine> frozen = booking.lines().stream()
                 .collect(Collectors.toMap(BookingLine::serviceId, Function.identity(), (a, b) -> a));
-        return current.stream().map(line -> frozen.getOrDefault(line.serviceId(), line)).toList();
+        return current.stream().map(line -> {
+            BookingLine old = frozen.get(line.serviceId());
+            return old != null && old.vehicleTypeId() == line.vehicleTypeId() ? old : line;
+        }).toList();
     }
 
     private Slot requireFreeSlot(LocalDate date, LocalTime time, List<BookingLine> lines, long excludeBookingId) {

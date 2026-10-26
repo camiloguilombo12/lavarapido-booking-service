@@ -33,12 +33,17 @@ class InternalApiKeyFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String provided = request.getHeader(HEADER);
-        if (expectedKey != null && provided != null
-                && MessageDigest.isEqual(expectedKey, provided.getBytes(StandardCharsets.UTF_8))) {
+        if (matches(request)) {
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                     "internal-service", null, List.of(new SimpleGrantedAuthority(ROLE))));
         }
         chain.doFilter(request, response);
+    }
+
+    /** La petición trae la llave interna correcta (y hay una configurada). */
+    boolean matches(HttpServletRequest request) {
+        String provided = request.getHeader(HEADER);
+        return expectedKey != null && provided != null
+                && MessageDigest.isEqual(expectedKey, provided.getBytes(StandardCharsets.UTF_8));
     }
 }

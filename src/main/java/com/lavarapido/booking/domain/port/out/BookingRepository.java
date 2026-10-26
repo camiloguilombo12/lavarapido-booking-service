@@ -33,8 +33,17 @@ public interface BookingRepository {
 
     boolean hasUpcomingOnBay(short bayId, Instant from);
 
-    /** Reservas sin iniciar (SCHEDULED o CONFIRMED) que terminaron antes de esa hora. */
-    List<Booking> findNotStartedEndingBefore(Instant before);
+    /** Reservas activas del vehiculo: en curso, o programadas/confirmadas que terminan despues de now. */
+    long countActiveForVehicle(long customerVehicleId, Instant now);
+
+    /** BIZ-10: reservas activas (SCHEDULED, CONFIRMED, IN_PROGRESS) que terminan despues de from. */
+    List<Booking> findActiveEndingAfter(Instant from);
+
+    /** B: reservas activas (SCHEDULED, CONFIRMED, IN_PROGRESS) en efectivo que hizo ese usuario. */
+    long countActiveCashBookedBy(long userId);
+
+    /** D: DIGITAL sin reporte, SCHEDULED o CONFIRMED, con payment_deadline <= now. */
+    List<Booking> findPaymentOverdue(Instant now);
 
     List<CancellationReason> findCancellationReasons();
 

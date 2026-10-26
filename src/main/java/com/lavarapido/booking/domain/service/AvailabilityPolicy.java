@@ -105,6 +105,19 @@ public final class AvailabilityPolicy {
         return requestedStart.isAfter(now) ? UnavailableReason.NO_FREE_BAY : UnavailableReason.TIME_PASSED;
     }
 
+    /**
+     * BIZ-10: la franja [start, end) de una reserva cabe en el horario del dia: esta abierto, va dentro
+     * de las horas y no cruza la pausa. Con esto se revisan las reservas al cambiar el horario.
+     */
+    public static boolean fits(LocalDate date, Optional<DayWindow> window, LocalDateTime start, LocalDateTime end) {
+        if (window.isEmpty()) {
+            return false;
+        }
+        DayWindow day = window.get();
+        return !start.isBefore(date.atTime(day.opensAt())) && !end.isAfter(date.atTime(day.closesAt()))
+                && !crossesBreak(date, day, start, end);
+    }
+
     private static boolean crossesBreak(LocalDate date, DayWindow day, LocalDateTime start, LocalDateTime end) {
         if (!day.hasBreak()) {
             return false;

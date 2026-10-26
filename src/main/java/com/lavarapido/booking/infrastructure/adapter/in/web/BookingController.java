@@ -78,17 +78,24 @@ class BookingController {
         return BookingResponse.from(bookings.get(id, AuthenticatedUser.customer(jwt)), false);
     }
 
-    /** Cambiar fecha, hora o servicios (RF-007: solo antes de la hora de inicio). */
+    /**
+     * Cambiar fecha y hora (RF-007: solo antes de la hora de inicio). Los servicios no: si llegan
+     * otros, 409 BOOKING_SERVICES_LOCKED (BIZ-01); el admin los cambia por /admin/bookings.
+     */
     @PutMapping("/{id}")
     BookingResponse reschedule(@AuthenticationPrincipal Jwt jwt, @PathVariable long id,
                                @Valid @RequestBody RescheduleRequest request) {
         return BookingResponse.from(bookings.reschedule(id, request.toRequest(), AuthenticatedUser.customer(jwt)), false);
     }
 
-    /** El cliente cancela con el motivo CUSTOMER_REQUEST; el cuerpo es opcional. */
+    /**
+     * El cliente cancela con el motivo que elige (A-20: solo los de su lado); el cuerpo es opcional y
+     * sin motivo queda CUSTOMER_REQUEST.
+     */
     @PostMapping("/{id}/cancel")
     BookingResponse cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable long id,
                            @RequestBody(required = false) CancelRequest request) {
-        return BookingResponse.from(bookings.cancel(id, null, AuthenticatedUser.customer(jwt)), false);
+        String reasonCode = request == null ? null : request.reasonCode();
+        return BookingResponse.from(bookings.cancel(id, reasonCode, AuthenticatedUser.customer(jwt)), false);
     }
 }
