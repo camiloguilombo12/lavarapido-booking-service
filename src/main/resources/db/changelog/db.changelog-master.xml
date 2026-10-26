@@ -14,6 +14,8 @@
     103  seed del catálogo (categorías, servicios y precios por tipo de vehículo)
     104  seed de estados de reserva y motivos de cancelación
     109  seed del negocio, horario semanal y bahías
+    049  modo de pago, plazo del pago digital y cuándo se reportó (efectivo con límite y vencimiento)
+    117  motivo de cancelación PAYMENT_TIMEOUT (lo pone el sistema)
 -->
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
@@ -30,6 +32,7 @@
     <include file="db/changelog/043-booking-service-loyalty-points.sql"/>
     <include file="db/changelog/044-booking-service-price-positive.sql"/>
     <include file="db/changelog/045-booking-row-version-optimistic-lock.sql"/>
+    <include file="db/changelog/049-booking-payment-mode-deadline.sql"/>
     <include file="db/changelog/seed/103-seed-catalog.sql"/>
     <include file="db/changelog/seed/104-seed-booking-catalogs.sql"/>
     <include file="db/changelog/seed/109-seed-establishment-schedule.sql"/>
@@ -37,5 +40,6 @@
     <include file="db/changelog/seed/111-clear-example-business-data.sql"/>
     <include file="db/changelog/seed/112-seed-expired-cancellation-reason.sql"/>
     <include file="db/changelog/seed/113-clear-example-establishment.sql"/>
+    <include file="db/changelog/seed/117-seed-payment-timeout-cancellation-reason.sql"/>
 
 </databaseChangeLog>
