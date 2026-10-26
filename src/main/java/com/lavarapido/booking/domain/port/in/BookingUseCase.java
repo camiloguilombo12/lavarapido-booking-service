@@ -65,4 +65,23 @@ public interface BookingUseCase {
      * atenderla, queda NO_SHOW. 409 BOOKING_NOT_EXPIRED si no esta confirmada o aun no vence.
      */
     BookingView markUnattended(long bookingId);
+
+    /**
+     * D: ids de las reservas DIGITAL activas sin comprobante cuyo plazo ya paso. PaymentDeadlineJob
+     * las cancela una por una con cancelForPaymentTimeout.
+     */
+    List<Long> paymentOverdueBookings();
+
+    /**
+     * D: cancela con el motivo PAYMENT_TIMEOUT por el mismo camino que una cancelacion normal (publica
+     * BookingCancelled). Si mientras tanto llego el comprobante o ya no se puede cancelar, no hace nada
+     * y devuelve false. Un choque de row_version sale como OptimisticLockingFailureException.
+     */
+    boolean cancelForPaymentTimeout(long bookingId);
+
+    /**
+     * payment-service avisa que el cliente reporto el pago (payment.reported) o que se aprobo
+     * (payment.confirmed): se guarda payment_reported_at una sola vez.
+     */
+    PaymentReportOutcome recordPaymentReported(long bookingId);
 }

@@ -45,6 +45,16 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # D: un aviso de pago que falla (base caida) se reintenta 3 veces con espera creciente y luego
+        # va a la DLQ booking.payment-events.dlq, como en operations y notification
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
 
 server:
   port: ${PORT:3003}
@@ -91,6 +101,10 @@ app:
     # D: cuanto tiene el cliente para subir el comprobante de una reserva DIGITAL (o hasta la hora de
     # inicio, si es mas pronto); despues PaymentDeadlineJob la cancela con PAYMENT_TIMEOUT
     payment-window: ${BOOKING_PAYMENT_WINDOW:30m}
+    # D: PaymentDeadlineJob cancela con PAYMENT_TIMEOUT las DIGITAL vencidas sin comprobante, cada interval
+    payment-expiry:
+      enabled: ${BOOKING_PAYMENT_EXPIRY_ENABLED:true}
+      interval: ${BOOKING_PAYMENT_EXPIRY_INTERVAL:60s}
 
 # Swagger apagado por defecto; application-dev.yml lo prende
 springdoc:

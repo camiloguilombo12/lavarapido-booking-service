@@ -77,6 +77,18 @@ public final class BookingJpaRepositories {
                   AND b.statusId IN (1, 2, 3) AND b.paymentMode = 'CASH'
                 """)
         long countActiveCashBookedBy(@Param("userId") long userId);
+
+        /**
+         * D: DIGITAL sin comprobante, todavia cancelables (1, 2) y con el plazo cumplido. Usa el indice
+         * filtrado ix_booking_payment_pending (changelog 049).
+         */
+        @Query("""
+                SELECT b FROM BookingJpaEntity b
+                WHERE b.deletedAt IS NULL AND b.paymentMode = 'DIGITAL' AND b.paymentReportedAt IS NULL
+                  AND b.statusId IN (1, 2) AND b.paymentDeadline <= :now
+                ORDER BY b.paymentDeadline ASC
+                """)
+        List<BookingJpaEntity> findPaymentOverdue(@Param("now") Instant now);
     }
 
     public interface Lines extends JpaRepository<BookingServiceJpaEntity, Long> {

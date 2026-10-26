@@ -23,6 +23,7 @@ import com.lavarapido.booking.domain.port.in.BookingUseCase;
 import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.domain.port.in.Caller;
 import com.lavarapido.booking.domain.port.in.DayAvailability;
+import com.lavarapido.booking.domain.port.in.PaymentReportOutcome;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.CatalogRepository;
@@ -200,16 +201,75 @@ public class BookingService implements BookingUseCase {
         // E-11: con la agenda bloqueada, como reprogramar; si otro la cambio despues de leerla,
         // row_version (@Version) no la deja pisar y sale 409
         bookings.lockSchedule();
-        booking.cancel(reason);
-        Booking saved = bookings.save(booking, caller.userId());
+        Booking saved = cancelAndSave(booking, reason, caller.userId());
 
         VehicleSnapshot vehicle = vehicleOf(saved, caller);
-        // A-20 / OPS-10: el texto del motivo y tambien su codigo
+        publishCancelled(saved, customerUserOf(vehicle, caller));
+        return view(saved, vehicle, caller);
+    }
+
+    /** El camino de toda cancelacion: el dominio la cancela con su motivo y se guarda (row_version). */
+    private Booking cancelAndSave(Booking booking, CancellationReason reason, long actor) {
+        booking.cancel(reason);
+        return bookings.save(booking, actor);
+    }
+
+    /** BookingCancelled: A-20 / OPS-10, el texto del motivo y tambien su codigo. */
+    private void publishCancelled(Booking saved, Long customerUserId) {
         CancellationReason chosen = saved.cancellationReason();
         events.publish(new BookingEvent(BookingEvent.Type.CANCELLED, saved.id(), saved.code(),
-                customerUserOf(vehicle, caller), saved.customerVehicleId(), saved.scheduledStart(),
+                customerUserId, saved.customerVehicleId(), saved.scheduledStart(),
                 saved.serviceBayId(), chosen.name(), clock.instant(), null, null, chosen.code()));
-        return view(saved, vehicle, caller);
+    }
+
+    // ------------------------------------------------------------------ pago de la reserva (D)
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> paymentOverdueBookings() {
+        Instant now = clock.instant();
+        // la consulta ya filtra; el dominio tiene la ultima palabra (la misma regla que al cancelar)
+        return bookings.findPaymentOverdue(now).stream()
+                .filter(booking -> booking.paymentOverdue(now))
+                .map(Booking::id)
+                .toList();
+    }
+
+    @Override
+    public boolean cancelForPaymentTimeout(long bookingId) {
+        // con la agenda bloqueada antes de leer, como el resto de cambios; asi el comprobante que llega
+        // al mismo tiempo (recordPaymentReported) se atiende antes o despues, nunca a la mitad
+        bookings.lockSchedule();
+        Optional<Booking> found = bookings.findById(bookingId);
+        Instant now = clock.instant();
+        if (found.isEmpty() || !found.get().paymentOverdue(now)) {
+            // ya llego el comprobante, ya empezo o ya se cancelo: no hay nada que hacer
+            return false;
+        }
+        Booking saved = cancelAndSave(found.get(), requireReason(CancellationReason.PAYMENT_TIMEOUT), SYSTEM_ACTOR);
+        // solo una reserva del cliente tiene plazo (regla 5), asi que quien la hizo es el cliente; el
+        // job no tiene token para preguntarle a customer-service por el dueño del vehiculo
+        publishCancelled(saved, saved.bookedBy());
+        return true;
+    }
+
+    @Override
+    public PaymentReportOutcome recordPaymentReported(long bookingId) {
+        // con la agenda bloqueada: no se cruza con PaymentDeadlineJob cancelando la misma reserva
+        bookings.lockSchedule();
+        Optional<Booking> found = bookings.findById(bookingId);
+        if (found.isEmpty()) {
+            return PaymentReportOutcome.NOT_FOUND;
+        }
+        Booking booking = found.get();
+        if (booking.status() == BookingStatus.CANCELLED) {
+            return PaymentReportOutcome.CANCELLED;
+        }
+        if (!booking.markPaymentReported(clock.instant())) {
+            return PaymentReportOutcome.ALREADY_REPORTED;
+        }
+        bookings.save(booking, SYSTEM_ACTOR);
+        return PaymentReportOutcome.RECORDED;
     }
 
     @Override

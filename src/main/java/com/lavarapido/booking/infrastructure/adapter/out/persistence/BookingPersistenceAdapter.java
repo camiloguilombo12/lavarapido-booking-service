@@ -149,6 +149,11 @@ class BookingPersistenceAdapter implements BookingRepository {
     }
 
     @Override
+    public List<Booking> findPaymentOverdue(Instant now) {
+        return toDomain(bookings.findPaymentOverdue(now));
+    }
+
+    @Override
     public List<CancellationReason> findCancellationReasons() {
         return reasons.findByActiveTrueAndDeletedAtIsNullOrderByDisplayOrderAsc().stream()
                 .map(BookingPersistenceAdapter::toReason)

@@ -42,6 +42,9 @@ public interface BookingRepository {
     /** B: reservas activas (SCHEDULED, CONFIRMED, IN_PROGRESS) en efectivo que hizo ese usuario. */
     long countActiveCashBookedBy(long userId);
 
+    /** D: DIGITAL sin reporte, SCHEDULED o CONFIRMED, con payment_deadline <= now. */
+    List<Booking> findPaymentOverdue(Instant now);
+
     List<CancellationReason> findCancellationReasons();
 
     Optional<CancellationReason> findCancellationReason(String code);
