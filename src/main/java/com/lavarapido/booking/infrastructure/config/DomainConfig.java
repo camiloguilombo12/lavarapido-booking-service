@@ -23,11 +23,14 @@ class DomainConfig {
                                     @Value("${app.booking.slot-minutes:30}") int slotMinutes,
                                     @Value("${app.booking.max-days-ahead:60}") int maxDaysAhead,
                                     @Value("${app.booking.alternatives:5}") int alternatives,
-                                    @Value("${app.booking.expiry-grace-minutes:60}") int expiryGraceMinutes) {
-        if (slotMinutes < 5 || maxDaysAhead < 1 || alternatives < 1 || expiryGraceMinutes < 0) {
+                                    @Value("${app.booking.expiry-grace-minutes:60}") int expiryGraceMinutes,
+                                    @Value("${app.booking.cash-active-limit:1}") int cashActiveLimit,
+                                    @Value("${app.booking.payment-window:30m}") Duration paymentWindow) {
+        if (slotMinutes < 5 || maxDaysAhead < 1 || alternatives < 1 || expiryGraceMinutes < 0
+                || cashActiveLimit < 1 || paymentWindow.isNegative() || paymentWindow.isZero()) {
             throw new IllegalStateException("app.booking.* has invalid values");
         }
         return new BookingSettings(ZoneId.of(zone), slotMinutes, maxDaysAhead, alternatives,
-                Duration.ofMinutes(expiryGraceMinutes));
+                Duration.ofMinutes(expiryGraceMinutes), cashActiveLimit, paymentWindow);
     }
 }

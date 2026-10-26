@@ -12,6 +12,7 @@ import com.lavarapido.booking.domain.model.BusinessHour;
 import com.lavarapido.booking.domain.model.UnavailableReason;
 import com.lavarapido.booking.domain.model.CancellationReason;
 import com.lavarapido.booking.domain.model.CatalogItem;
+import com.lavarapido.booking.domain.model.PaymentMode;
 import com.lavarapido.booking.domain.model.ServiceBay;
 import com.lavarapido.booking.domain.model.ServiceCategory;
 import com.lavarapido.booking.domain.model.ServicePrice;
@@ -19,6 +20,9 @@ import com.lavarapido.booking.domain.model.VehicleSnapshot;
 import com.lavarapido.booking.domain.port.in.BookingRequest;
 import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.domain.port.in.Caller;
+import com.lavarapido.booking.domain.port.in.PaymentReportOutcome;
+import com.lavarapido.booking.domain.port.in.PaymentTimeoutOutcome;
+import com.lavarapido.booking.domain.port.out.PaymentStatusDirectory;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.CatalogRepository;
@@ -32,6 +36,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -73,13 +78,14 @@ class BookingServiceTest {
     private final BayRepository bays = mock(BayRepository.class);
     private final CustomerDirectory customers = mock(CustomerDirectory.class);
     private final DomainEventPublisher events = mock(DomainEventPublisher.class);
+    private final PaymentStatusDirectory payments = mock(PaymentStatusDirectory.class);
 
     private BookingService service;
 
     @BeforeEach
     void setUp() {
         service = new BookingService(bookings, catalog, schedule, bays, customers, events,
-                new BookingSettings(BOGOTA, 30, 60, 5), Clock.fixed(NOW, ZoneOffset.UTC));
+                new BookingSettings(BOGOTA, 30, 60, 5), Clock.fixed(NOW, ZoneOffset.UTC), payments);
         given(schedule.findBusinessHours()).willReturn(List.of(
                 new BusinessHour((short) 4, true, LocalTime.of(8, 0), LocalTime.of(17, 0), null, null)));
         given(schedule.findExceptionByDate(any())).willReturn(Optional.empty());
@@ -98,7 +104,11 @@ class BookingServiceTest {
     }
 
     private static BookingRequest at(String time) {
-        return new BookingRequest(5L, List.of(2), TOMORROW, LocalTime.parse(time), null);
+        return paying(time, "DIGITAL");
+    }
+
+    private static BookingRequest paying(String time, String paymentMode) {
+        return new BookingRequest(5L, List.of(2), TOMORROW, LocalTime.parse(time), null, null, paymentMode);
     }
 
     private static Booking existing(long id, long vehicleId, String startUtc) {
@@ -188,9 +198,9 @@ class BookingServiceTest {
     @DisplayName("no se reserva en el pasado ni mas alla del limite de dias")
     void dateRange() {
         assertThrows(InvalidValueException.class, () -> service.create(
-                new BookingRequest(5L, List.of(2), LocalDate.parse("2026-09-29"), LocalTime.of(9, 0), null), CLIENT));
+                new BookingRequest(5L, List.of(2), LocalDate.parse("2026-09-29"), LocalTime.of(9, 0), null, null, "DIGITAL"), CLIENT));
         assertThrows(InvalidValueException.class, () -> service.create(
-                new BookingRequest(5L, List.of(2), LocalDate.parse("2026-12-30"), LocalTime.of(9, 0), null), CLIENT));
+                new BookingRequest(5L, List.of(2), LocalDate.parse("2026-12-30"), LocalTime.of(9, 0), null, null, "DIGITAL"), CLIENT));
     }
 
     @Test
@@ -491,12 +501,219 @@ class BookingServiceTest {
         verify(bookings).save(ended, 0L);
     }
 
+    // ------------------------------------------------------------------ contrato de pago (B y D)
+
     @Test
-    @DisplayName("el motivo del sistema no se ofrece al cancelar")
+    @DisplayName("contrato de pago: el cliente sin modo de pago, o con uno que no existe, recibe 400 INVALID_PAYMENT_MODE")
+    void customerMustChooseAPaymentMode() {
+        InvalidValueException missing = assertThrows(InvalidValueException.class,
+                () -> service.create(paying("09:00", null), CLIENT));
+        InvalidValueException unknown = assertThrows(InvalidValueException.class,
+                () -> service.create(paying("09:00", "CARD"), CLIENT));
+
+        assertEquals("INVALID_PAYMENT_MODE", missing.code());
+        assertEquals("INVALID_PAYMENT_MODE", unknown.code());
+        verify(bookings, never()).save(any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("D: la reserva DIGITAL del cliente queda con plazo = creación + 30 min (empieza mucho después)")
+    void digitalBookingGetsADeadline() {
+        BookingView view = service.create(at("09:00"), CLIENT);
+
+        assertEquals(PaymentMode.DIGITAL, view.booking().paymentMode());
+        assertEquals(NOW.plus(Duration.ofMinutes(30)), view.booking().paymentDeadline());
+        assertEquals(false, view.booking().paymentReported());
+        // la DIGITAL no cuenta el efectivo
+        verify(bookings, never()).countActiveCashBookedBy(anyLong());
+    }
+
+    @Test
+    @DisplayName("D: si la reserva empieza antes de que se acabe la ventana, el plazo es la hora de inicio")
+    void digitalDeadlineIsCappedAtTheStart() {
+        // hoy a las 10:00 en Bogota; la ventana es de 2 horas y la reserva es a las 11:00
+        service = new BookingService(bookings, catalog, schedule, bays, customers, events,
+                new BookingSettings(BOGOTA, 30, 60, 5, Duration.ofMinutes(60), 1, Duration.ofHours(2)),
+                Clock.fixed(NOW, ZoneOffset.UTC), payments);
+        given(schedule.findBusinessHours()).willReturn(List.of(
+                new BusinessHour((short) 3, true, LocalTime.of(8, 0), LocalTime.of(17, 0), null, null)));
+
+        BookingView view = service.create(new BookingRequest(5L, List.of(2), LocalDate.parse("2026-09-30"),
+                LocalTime.of(11, 0), null, null, "DIGITAL"), CLIENT);
+
+        assertEquals(Instant.parse("2026-09-30T16:00:00Z"), view.booking().paymentDeadline());
+    }
+
+    @Test
+    @DisplayName("B: con la agenda bloqueada, el efectivo pasa por debajo del límite y no tiene plazo")
+    void cashBelowTheLimit() {
+        given(bookings.countActiveCashBookedBy(7L)).willReturn(0L);
+
+        BookingView view = service.create(paying("09:00", "CASH"), CLIENT);
+
+        assertEquals(PaymentMode.CASH, view.booking().paymentMode());
+        assertEquals(null, view.booking().paymentDeadline());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(bookings);
+        order.verify(bookings).lockSchedule();
+        order.verify(bookings).countActiveCashBookedBy(7L);
+        order.verify(bookings).save(any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("B: el cliente que ya llegó al límite de efectivo recibe 409 CASH_BOOKING_LIMIT y no se guarda nada")
+    void cashAtTheLimit() {
+        given(bookings.countActiveCashBookedBy(7L)).willReturn(1L);
+
+        ConflictException error = assertThrows(ConflictException.class,
+                () -> service.create(paying("09:00", "CASH"), CLIENT));
+
+        assertEquals("CASH_BOOKING_LIMIT", error.code());
+        verify(bookings, never()).save(any(), anyLong());
+        verify(events, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("regla 5: el admin no tiene límite de efectivo ni plazo, y el modo es opcional")
+    void adminIsExempt() {
+        given(customers.vehiclesByIds(List.of(5L))).willReturn(Map.of(5L, MY_SUV));
+        given(bookings.countActiveCashBookedBy(anyLong())).willReturn(5L);
+
+        BookingView cash = service.create(paying("09:00", "CASH"), ADMIN);
+        assertEquals(PaymentMode.CASH, cash.booking().paymentMode());
+        assertEquals(null, cash.booking().paymentDeadline());
+
+        BookingView digital = service.create(paying("11:00", "DIGITAL"), ADMIN);
+        assertEquals(PaymentMode.DIGITAL, digital.booking().paymentMode());
+        assertEquals(null, digital.booking().paymentDeadline());
+
+        BookingView none = service.create(paying("13:00", null), ADMIN);
+        assertEquals(null, none.booking().paymentMode());
+        verify(bookings, never()).countActiveCashBookedBy(anyLong());
+
+        // un valor que no existe sigue siendo 400, también para el admin
+        assertThrows(InvalidValueException.class, () -> service.create(paying("15:00", "BITCOIN"), ADMIN));
+    }
+
+    private static final CancellationReason PAYMENT_TIMEOUT =
+            new CancellationReason((short) 8, "PAYMENT_TIMEOUT", "No se subió el comprobante de pago a tiempo", false);
+
+    /** DIGITAL de mañana con plazo a las 09:30 de hoy en Bogota (ya vencido a las 10:00). */
+    private static Booking digital(long id, BookingStatus status, Instant reportedAt) {
+        Instant start = Instant.parse("2026-10-01T14:00:00Z");
+        return Booking.restore(id, 5L, (short) 1, start, start.plusSeconds(75 * 60), status, 7L, null, 0,
+                BigDecimal.ZERO, null, List.of(), NOW.minusSeconds(3600), PaymentMode.DIGITAL,
+                NOW.minusSeconds(1800), reportedAt);
+    }
+
+    @Test
+    @DisplayName("D: el job recibe solo las vencidas que el dominio confirma")
+    void overdueBookingsAreFilteredByTheDomain() {
+        given(bookings.findPaymentOverdue(NOW)).willReturn(List.of(digital(1L, BookingStatus.CONFIRMED, null),
+                digital(2L, BookingStatus.CONFIRMED, NOW.minusSeconds(60))));
+
+        assertEquals(List.of(1L), service.paymentOverdueBookings());
+    }
+
+    @Test
+    @DisplayName("D / adenda: con reported=false explícito de payment, la vencida se cancela con PAYMENT_TIMEOUT por el camino normal")
+    void paymentTimeoutCancelsThroughTheUsualPath() {
+        Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(overdue));
+        given(bookings.findCancellationReason("PAYMENT_TIMEOUT")).willReturn(Optional.of(PAYMENT_TIMEOUT));
+        given(payments.paymentReported(1L)).willReturn(false);
+
+        assertEquals(PaymentTimeoutOutcome.CANCELLED, service.cancelForPaymentTimeout(1L));
+
+        assertEquals(BookingStatus.CANCELLED, overdue.status());
+        assertEquals("PAYMENT_TIMEOUT", overdue.cancellationReason().code());
+        // a payment se le pregunta antes de tomar el candado de la agenda
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(payments, bookings);
+        order.verify(payments).paymentReported(1L);
+        order.verify(bookings).lockSchedule();
+        order.verify(bookings).findById(1L);
+        order.verify(bookings).save(overdue, 0L);
+        ArgumentCaptor<BookingEvent> event = ArgumentCaptor.forClass(BookingEvent.class);
+        verify(events).publish(event.capture());
+        assertEquals(BookingEvent.Type.CANCELLED, event.getValue().type());
+        assertEquals("PAYMENT_TIMEOUT", event.getValue().reasonCode());
+        assertEquals("No se subió el comprobante de pago a tiempo", event.getValue().reason());
+        // el cliente que la hizo recibe el aviso (sin token no se le pregunta a customer-service)
+        assertEquals(7L, event.getValue().customerUserId());
+        verify(customers, never()).vehiclesByIds(any());
+    }
+
+    @Test
+    @DisplayName("D: si llegó el comprobante, ya no existe o ya se canceló, no se toca ni se avisa")
+    void paymentTimeoutSkipsWhatIsNoLongerOverdue() {
+        given(bookings.findById(1L)).willReturn(Optional.of(digital(1L, BookingStatus.CONFIRMED, NOW.minusSeconds(5))));
+        given(bookings.findById(2L)).willReturn(Optional.empty());
+        given(bookings.findById(3L)).willReturn(Optional.of(digital(3L, BookingStatus.CANCELLED, null)));
+
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(1L));
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(2L));
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(3L));
+        verify(bookings, never()).save(any(), anyLong());
+        verify(events, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("adenda: si payment tiene el pago (se perdió payment.reported), se marca como reportado y NO se cancela")
+    void paymentFoundInPaymentServiceIsMarkedNotCancelled() {
+        Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(overdue));
+        given(payments.paymentReported(1L)).willReturn(true);
+
+        assertEquals(PaymentTimeoutOutcome.PAYMENT_REPORTED, service.cancelForPaymentTimeout(1L));
+
+        assertEquals(BookingStatus.CONFIRMED, overdue.status());
+        assertEquals(NOW, overdue.paymentReportedAt());
+        verify(bookings).save(overdue, 0L);
+        verify(events, never()).publish(any());
+        verify(bookings, never()).findCancellationReason(any());
+    }
+
+    @Test
+    @DisplayName("adenda: si payment no responde (caído o timeout), no se cancela ni se toca la reserva")
+    void paymentServiceDownCancelsNothing() {
+        Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(overdue));
+        given(payments.paymentReported(1L)).willThrow(new com.lavarapido.booking.domain.exception
+                .DependencyUnavailableException("PAYMENT_SERVICE_UNAVAILABLE", "timeout"));
+
+        assertThrows(com.lavarapido.booking.domain.exception.DependencyUnavailableException.class,
+                () -> service.cancelForPaymentTimeout(1L));
+
+        assertEquals(BookingStatus.CONFIRMED, overdue.status());
+        verify(bookings, never()).lockSchedule();
+        verify(bookings, never()).save(any(), anyLong());
+        verify(events, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("el aviso de pago se guarda una vez; la repetida, la cancelada y la inexistente no cambian nada")
+    void paymentReportIsIdempotent() {
+        Booking pending = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(pending));
+        given(bookings.findById(2L)).willReturn(Optional.of(digital(2L, BookingStatus.CANCELLED, null)));
+        given(bookings.findById(3L)).willReturn(Optional.empty());
+
+        assertEquals(PaymentReportOutcome.RECORDED, service.recordPaymentReported(1L));
+        assertEquals(NOW, pending.paymentReportedAt());
+        assertEquals(PaymentReportOutcome.ALREADY_REPORTED, service.recordPaymentReported(1L));
+        assertEquals(PaymentReportOutcome.CANCELLED, service.recordPaymentReported(2L));
+        assertEquals(PaymentReportOutcome.NOT_FOUND, service.recordPaymentReported(3L));
+
+        verify(bookings, org.mockito.Mockito.times(1)).save(any(), anyLong());
+        verify(bookings, org.mockito.Mockito.times(4)).lockSchedule();
+    }
+
+    @Test
+    @DisplayName("los motivos del sistema (EXPIRED, PAYMENT_TIMEOUT) no se ofrecen al cancelar")
     void theSystemReasonIsHidden() {
         given(bookings.findCancellationReasons()).willReturn(List.of(
                 new CancellationReason((short) 1, "CUSTOMER_REQUEST", "El cliente la cancelo", false),
-                new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false)));
+                new CancellationReason((short) 7, "EXPIRED", "Vencio sin confirmarse", false),
+                new CancellationReason((short) 8, "PAYMENT_TIMEOUT", "No se subió el comprobante de pago a tiempo", false)));
 
         assertEquals(List.of("CUSTOMER_REQUEST"),
                 service.cancellationReasons().stream().map(CancellationReason::code).toList());

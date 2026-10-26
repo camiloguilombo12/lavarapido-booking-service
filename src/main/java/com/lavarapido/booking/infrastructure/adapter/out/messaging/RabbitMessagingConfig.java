@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Declara el exchange compartido carwash.events (ADR-004). Este servicio solo publica; las colas
- * las declara cada consumidor (notification-service...).
+ * Declara el exchange compartido carwash.events (ADR-004). Las colas las declara cada consumidor
+ * (notification-service...); la de este servicio, RabbitConsumerConfig (avisos de pago).
  */
 @Configuration
 @ConditionalOnProperty(prefix = "app.messaging", name = "enabled", havingValue = "true")
