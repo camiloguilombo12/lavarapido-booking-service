@@ -24,6 +24,8 @@ import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.domain.port.in.Caller;
 import com.lavarapido.booking.domain.port.in.DayAvailability;
 import com.lavarapido.booking.domain.port.in.PaymentReportOutcome;
+import com.lavarapido.booking.domain.port.in.PaymentTimeoutOutcome;
+import com.lavarapido.booking.domain.port.out.PaymentStatusDirectory;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.CatalogRepository;
@@ -87,10 +89,11 @@ public class BookingService implements BookingUseCase {
     private final DomainEventPublisher events;
     private final BookingSettings settings;
     private final Clock clock;
+    private final PaymentStatusDirectory payments;
 
     public BookingService(BookingRepository bookings, CatalogRepository catalog, ScheduleRepository schedule,
                           BayRepository bays, CustomerDirectory customers, DomainEventPublisher events,
-                          BookingSettings settings, Clock clock) {
+                          BookingSettings settings, Clock clock, PaymentStatusDirectory payments) {
         this.bookings = bookings;
         this.catalog = catalog;
         this.schedule = schedule;
@@ -99,6 +102,7 @@ public class BookingService implements BookingUseCase {
         this.events = events;
         this.settings = settings;
         this.clock = clock;
+        this.payments = payments;
     }
 
     // ------------------------------------------------------------------ disponibilidad
@@ -236,7 +240,13 @@ public class BookingService implements BookingUseCase {
     }
 
     @Override
-    public boolean cancelForPaymentTimeout(long bookingId) {
+    public PaymentTimeoutOutcome cancelForPaymentTimeout(long bookingId) {
+        // Adenda: el aviso payment.reported puede perderse (no hay Outbox), asi que antes de cancelar se le
+        // pregunta a payment. Se pregunta antes de tomar el candado para no tener la agenda bloqueada
+        // mientras se espera la respuesta. Si payment no responde, sale DependencyUnavailableException y
+        // la reserva no se cancela en esta vuelta (el job la vuelve a mirar en la siguiente)
+        boolean reported = payments.paymentReported(bookingId);
+
         // con la agenda bloqueada antes de leer, como el resto de cambios; asi el comprobante que llega
         // al mismo tiempo (recordPaymentReported) se atiende antes o despues, nunca a la mitad
         bookings.lockSchedule();
@@ -244,13 +254,21 @@ public class BookingService implements BookingUseCase {
         Instant now = clock.instant();
         if (found.isEmpty() || !found.get().paymentOverdue(now)) {
             // ya llego el comprobante, ya empezo o ya se cancelo: no hay nada que hacer
-            return false;
+            return PaymentTimeoutOutcome.NOT_OVERDUE;
         }
-        Booking saved = cancelAndSave(found.get(), requireReason(CancellationReason.PAYMENT_TIMEOUT), SYSTEM_ACTOR);
+        Booking booking = found.get();
+        if (reported) {
+            // payment tiene el pago: se marca como lo haria el consumidor y no se cancela
+            booking.markPaymentReported(now);
+            bookings.save(booking, SYSTEM_ACTOR);
+            return PaymentTimeoutOutcome.PAYMENT_REPORTED;
+        }
+        // solo con reported=false explicito
+        Booking saved = cancelAndSave(booking, requireReason(CancellationReason.PAYMENT_TIMEOUT), SYSTEM_ACTOR);
         // solo una reserva del cliente tiene plazo (regla 5), asi que quien la hizo es el cliente; el
         // job no tiene token para preguntarle a customer-service por el dueño del vehiculo
         publishCancelled(saved, saved.bookedBy());
-        return true;
+        return PaymentTimeoutOutcome.CANCELLED;
     }
 
     @Override

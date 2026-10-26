@@ -83,6 +83,11 @@ app:
     # de aqui se valida que el vehiculo sea del cliente (REST, ADR-004)
     base-url: ${CUSTOMER_SERVICE_URL:http://localhost:3002/api/v1}
     timeout: ${CUSTOMER_SERVICE_TIMEOUT:3s}
+  payment-service:
+    # PaymentDeadlineJob pregunta aqui si la reserva ya tiene pago antes de cancelarla (adenda D); va con
+    # la llave interna (INTERNAL_API_KEY). Sin respuesta en este tiempo, no cancela en esa vuelta
+    base-url: ${PAYMENT_SERVICE_URL:http://localhost:3005}
+    timeout: 3s
   booking:
     # zona horaria del lavadero: el horario y las fechas que ve el cliente estan en esta hora
     zone: ${BOOKING_ZONE:America/Bogota}

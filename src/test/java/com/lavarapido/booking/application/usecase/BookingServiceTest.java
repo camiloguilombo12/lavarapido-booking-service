@@ -21,6 +21,8 @@ import com.lavarapido.booking.domain.port.in.BookingRequest;
 import com.lavarapido.booking.domain.port.in.BookingView;
 import com.lavarapido.booking.domain.port.in.Caller;
 import com.lavarapido.booking.domain.port.in.PaymentReportOutcome;
+import com.lavarapido.booking.domain.port.in.PaymentTimeoutOutcome;
+import com.lavarapido.booking.domain.port.out.PaymentStatusDirectory;
 import com.lavarapido.booking.domain.port.out.BayRepository;
 import com.lavarapido.booking.domain.port.out.BookingRepository;
 import com.lavarapido.booking.domain.port.out.CatalogRepository;
@@ -76,13 +78,14 @@ class BookingServiceTest {
     private final BayRepository bays = mock(BayRepository.class);
     private final CustomerDirectory customers = mock(CustomerDirectory.class);
     private final DomainEventPublisher events = mock(DomainEventPublisher.class);
+    private final PaymentStatusDirectory payments = mock(PaymentStatusDirectory.class);
 
     private BookingService service;
 
     @BeforeEach
     void setUp() {
         service = new BookingService(bookings, catalog, schedule, bays, customers, events,
-                new BookingSettings(BOGOTA, 30, 60, 5), Clock.fixed(NOW, ZoneOffset.UTC));
+                new BookingSettings(BOGOTA, 30, 60, 5), Clock.fixed(NOW, ZoneOffset.UTC), payments);
         given(schedule.findBusinessHours()).willReturn(List.of(
                 new BusinessHour((short) 4, true, LocalTime.of(8, 0), LocalTime.of(17, 0), null, null)));
         given(schedule.findExceptionByDate(any())).willReturn(Optional.empty());
@@ -531,7 +534,7 @@ class BookingServiceTest {
         // hoy a las 10:00 en Bogota; la ventana es de 2 horas y la reserva es a las 11:00
         service = new BookingService(bookings, catalog, schedule, bays, customers, events,
                 new BookingSettings(BOGOTA, 30, 60, 5, Duration.ofMinutes(60), 1, Duration.ofHours(2)),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), payments);
         given(schedule.findBusinessHours()).willReturn(List.of(
                 new BusinessHour((short) 3, true, LocalTime.of(8, 0), LocalTime.of(17, 0), null, null)));
 
@@ -612,17 +615,20 @@ class BookingServiceTest {
     }
 
     @Test
-    @DisplayName("D: la vencida se cancela con PAYMENT_TIMEOUT por el camino normal y sale BookingCancelled")
+    @DisplayName("D / adenda: con reported=false explícito de payment, la vencida se cancela con PAYMENT_TIMEOUT por el camino normal")
     void paymentTimeoutCancelsThroughTheUsualPath() {
         Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
         given(bookings.findById(1L)).willReturn(Optional.of(overdue));
         given(bookings.findCancellationReason("PAYMENT_TIMEOUT")).willReturn(Optional.of(PAYMENT_TIMEOUT));
+        given(payments.paymentReported(1L)).willReturn(false);
 
-        assertEquals(true, service.cancelForPaymentTimeout(1L));
+        assertEquals(PaymentTimeoutOutcome.CANCELLED, service.cancelForPaymentTimeout(1L));
 
         assertEquals(BookingStatus.CANCELLED, overdue.status());
         assertEquals("PAYMENT_TIMEOUT", overdue.cancellationReason().code());
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(bookings);
+        // a payment se le pregunta antes de tomar el candado de la agenda
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(payments, bookings);
+        order.verify(payments).paymentReported(1L);
         order.verify(bookings).lockSchedule();
         order.verify(bookings).findById(1L);
         order.verify(bookings).save(overdue, 0L);
@@ -643,9 +649,42 @@ class BookingServiceTest {
         given(bookings.findById(2L)).willReturn(Optional.empty());
         given(bookings.findById(3L)).willReturn(Optional.of(digital(3L, BookingStatus.CANCELLED, null)));
 
-        assertEquals(false, service.cancelForPaymentTimeout(1L));
-        assertEquals(false, service.cancelForPaymentTimeout(2L));
-        assertEquals(false, service.cancelForPaymentTimeout(3L));
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(1L));
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(2L));
+        assertEquals(PaymentTimeoutOutcome.NOT_OVERDUE, service.cancelForPaymentTimeout(3L));
+        verify(bookings, never()).save(any(), anyLong());
+        verify(events, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("adenda: si payment tiene el pago (se perdió payment.reported), se marca como reportado y NO se cancela")
+    void paymentFoundInPaymentServiceIsMarkedNotCancelled() {
+        Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(overdue));
+        given(payments.paymentReported(1L)).willReturn(true);
+
+        assertEquals(PaymentTimeoutOutcome.PAYMENT_REPORTED, service.cancelForPaymentTimeout(1L));
+
+        assertEquals(BookingStatus.CONFIRMED, overdue.status());
+        assertEquals(NOW, overdue.paymentReportedAt());
+        verify(bookings).save(overdue, 0L);
+        verify(events, never()).publish(any());
+        verify(bookings, never()).findCancellationReason(any());
+    }
+
+    @Test
+    @DisplayName("adenda: si payment no responde (caído o timeout), no se cancela ni se toca la reserva")
+    void paymentServiceDownCancelsNothing() {
+        Booking overdue = digital(1L, BookingStatus.CONFIRMED, null);
+        given(bookings.findById(1L)).willReturn(Optional.of(overdue));
+        given(payments.paymentReported(1L)).willThrow(new com.lavarapido.booking.domain.exception
+                .DependencyUnavailableException("PAYMENT_SERVICE_UNAVAILABLE", "timeout"));
+
+        assertThrows(com.lavarapido.booking.domain.exception.DependencyUnavailableException.class,
+                () -> service.cancelForPaymentTimeout(1L));
+
+        assertEquals(BookingStatus.CONFIRMED, overdue.status());
+        verify(bookings, never()).lockSchedule();
         verify(bookings, never()).save(any(), anyLong());
         verify(events, never()).publish(any());
     }

@@ -1,7 +1,9 @@
 package com.lavarapido.booking.infrastructure.adapter.in.scheduling;
 
 import com.lavarapido.booking.domain.exception.ConflictException;
+import com.lavarapido.booking.domain.exception.DependencyUnavailableException;
 import com.lavarapido.booking.domain.port.in.BookingUseCase;
+import com.lavarapido.booking.domain.port.in.PaymentTimeoutOutcome;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -23,21 +25,37 @@ class PaymentDeadlineJobTest {
     private final PaymentDeadlineJob job = new PaymentDeadlineJob(bookings);
 
     @Test
-    @DisplayName("cancela cada reserva vencida, una por una")
-    void cancelsEveryOverdueBooking() {
-        given(bookings.paymentOverdueBookings()).willReturn(List.of(10L, 11L));
-        given(bookings.cancelForPaymentTimeout(10L)).willReturn(true);
-        // la 11 recibió el comprobante entre la consulta y la cancelación: el caso de uso no la toca
-        given(bookings.cancelForPaymentTimeout(11L)).willReturn(false);
+    @DisplayName("revisa cada reserva vencida, una por una, sea cual sea lo que diga payment")
+    void checksEveryOverdueBooking() {
+        given(bookings.paymentOverdueBookings()).willReturn(List.of(10L, 11L, 12L));
+        given(bookings.cancelForPaymentTimeout(10L)).willReturn(PaymentTimeoutOutcome.CANCELLED);
+        // adenda: payment tenía el pago de la 11 (el aviso se perdió); el caso de uso la marca y no la cancela
+        given(bookings.cancelForPaymentTimeout(11L)).willReturn(PaymentTimeoutOutcome.PAYMENT_REPORTED);
+        // la 12 recibió el comprobante entre la consulta y la revisión
+        given(bookings.cancelForPaymentTimeout(12L)).willReturn(PaymentTimeoutOutcome.NOT_OVERDUE);
 
         job.cancelOverdue();
 
         verify(bookings).cancelForPaymentTimeout(10L);
         verify(bookings).cancelForPaymentTimeout(11L);
+        verify(bookings).cancelForPaymentTimeout(12L);
     }
 
     @Test
-    @DisplayName("sin reservas vencidas no cancela nada")
+    @DisplayName("adenda: si payment no responde con una, esa queda para la siguiente vuelta y sigue con las demás")
+    void paymentDownSkipsOnlyThatBooking() {
+        given(bookings.paymentOverdueBookings()).willReturn(List.of(10L, 11L));
+        given(bookings.cancelForPaymentTimeout(10L)).willThrow(
+                new DependencyUnavailableException("PAYMENT_SERVICE_UNAVAILABLE", "timeout"));
+        given(bookings.cancelForPaymentTimeout(11L)).willReturn(PaymentTimeoutOutcome.CANCELLED);
+
+        assertDoesNotThrow(job::cancelOverdue);
+
+        verify(bookings).cancelForPaymentTimeout(11L);
+    }
+
+    @Test
+    @DisplayName("sin reservas vencidas no revisa nada")
     void nothingOverdue() {
         given(bookings.paymentOverdueBookings()).willReturn(List.of());
 
@@ -53,7 +71,7 @@ class PaymentDeadlineJobTest {
         given(bookings.cancelForPaymentTimeout(10L))
                 .willThrow(new ObjectOptimisticLockingFailureException("BookingJpaEntity", 10L));
         given(bookings.cancelForPaymentTimeout(11L)).willThrow(new ConflictException("SCHEDULE_BUSY", "busy"));
-        given(bookings.cancelForPaymentTimeout(12L)).willReturn(true);
+        given(bookings.cancelForPaymentTimeout(12L)).willReturn(PaymentTimeoutOutcome.CANCELLED);
 
         assertDoesNotThrow(job::cancelOverdue);
 
