@@ -114,4 +114,23 @@ class AvailabilityPolicyTest {
 
         assertEquals(List.of(LocalTime.of(9, 0), LocalTime.of(9, 30), LocalTime.of(11, 0)), alternatives);
     }
+
+    @Test
+    @DisplayName("las alternativas no ofrecen horas en que el vehículo ya tiene otra reserva")
+    void alternativesSkipTimesWhenTheVehicleIsBusy() {
+        // dos bahías libres toda la mañana, pero el carro ya tiene una reserva de 10:00 a 11:00
+        List<Slot> slots = AvailabilityPolicy.slots(DAY, NINE_TO_TWELVE, List.of((short) 1, (short) 2), List.of(),
+                60, 30, YESTERDAY);
+        List<Occupancy> vehicleBusy = List.of(new Occupancy((short) 2, DAY.atTime(10, 0), DAY.atTime(11, 0)));
+
+        List<Slot> forVehicle = AvailabilityPolicy.withoutBusyTimes(slots, DAY, 60, vehicleBusy);
+
+        // 9:30, 10:00 y 10:30 se cruzan con 10:00-11:00; 9:00 termina justo cuando empieza y 11:00 empieza al final
+        assertEquals(List.of(LocalTime.of(9, 0), LocalTime.of(11, 0)),
+                AvailabilityPolicy.alternatives(forVehicle, LocalTime.of(10, 0), 5));
+        assertTrue(at(forVehicle, "09:00").available());
+        assertFalse(at(forVehicle, "10:30").available());
+        // sin reservas del vehículo la lista queda igual
+        assertEquals(slots, AvailabilityPolicy.withoutBusyTimes(slots, DAY, 60, List.of()));
+    }
 }

@@ -76,6 +76,27 @@ public final class AvailabilityPolicy {
     }
 
     /**
+     * Las mismas horas, pero sin bahia en las que se cruzan con otra reserva del mismo vehiculo: un
+     * carro no puede estar en dos bahias. Sirve para no ofrecer como alternativa una hora que el
+     * vehiculo no puede tomar (luego responderia VEHICLE_ALREADY_BOOKED).
+     */
+    public static List<Slot> withoutBusyTimes(List<Slot> slots, LocalDate date, int durationMinutes,
+                                              List<Occupancy> busy) {
+        if (busy.isEmpty()) {
+            return slots;
+        }
+        return slots.stream()
+                .map(slot -> {
+                    LocalDateTime start = date.atTime(slot.time());
+                    LocalDateTime end = start.plusMinutes(durationMinutes);
+                    boolean crosses = busy.stream()
+                            .anyMatch(other -> other.start().isBefore(end) && start.isBefore(other.end()));
+                    return crosses ? new Slot(slot.time(), null) : slot;
+                })
+                .toList();
+    }
+
+    /**
      * RF-006: hasta max horas libres del mismo dia, las mas cercanas a la pedida, en orden.
      */
     public static List<LocalTime> alternatives(List<Slot> slots, LocalTime requested, int max) {
