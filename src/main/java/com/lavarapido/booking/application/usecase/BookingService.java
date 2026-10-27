@@ -136,7 +136,7 @@ public class BookingService implements BookingUseCase {
         Instant now = clock.instant();
 
         bookings.lockSchedule();
-        Slot slot = requireFreeSlot(request.date(), request.time(), lines, 0L);
+        Slot slot = requireFreeSlot(request.date(), request.time(), lines, vehicle.id(), 0L);
         LocalDateTime start = request.date().atTime(slot.time());
         requireVehicleFree(vehicle.id(), start, start.plusMinutes(durationOf(lines)), 0L);
         // B: con la agenda bloqueada, asi dos reservas en efectivo al mismo tiempo no pasan las dos.
@@ -181,7 +181,7 @@ public class BookingService implements BookingUseCase {
         List<BookingLine> lines = keepFrozenPrices(booking, linesFor(serviceIds, vehicle.vehicleTypeId()));
 
         bookings.lockSchedule();
-        Slot slot = requireFreeSlot(request.date(), request.time(), lines, booking.id());
+        Slot slot = requireFreeSlot(request.date(), request.time(), lines, booking.customerVehicleId(), booking.id());
         LocalDateTime start = request.date().atTime(slot.time());
         requireVehicleFree(booking.customerVehicleId(), start, start.plusMinutes(durationOf(lines)), booking.id());
         booking.reschedule(lines, toInstant(start), toInstant(start.plusMinutes(durationOf(lines))), slot.bayId(),
@@ -501,7 +501,8 @@ public class BookingService implements BookingUseCase {
         }).toList();
     }
 
-    private Slot requireFreeSlot(LocalDate date, LocalTime time, List<BookingLine> lines, long excludeBookingId) {
+    private Slot requireFreeSlot(LocalDate date, LocalTime time, List<BookingLine> lines, long vehicleId,
+                                 long excludeBookingId) {
         requireBookableDate(date);
         if (time == null) {
             throw new InvalidValueException("TIME_REQUIRED", "Choose a time");
@@ -513,9 +514,23 @@ public class BookingService implements BookingUseCase {
                 .filter(slot -> slot.time().equals(requested) && slot.available())
                 .findFirst()
                 .orElseThrow(() -> new SlotUnavailableException(
-                        AvailabilityPolicy.alternatives(slots, requested, settings.alternatives()),
+                        // las alternativas ademas respetan las otras reservas de ese vehiculo
+                        AvailabilityPolicy.alternatives(
+                                AvailabilityPolicy.withoutBusyTimes(slots, date, durationOf(lines),
+                                        vehicleBookingsOf(date, vehicleId, excludeBookingId)),
+                                requested, settings.alternatives()),
                         AvailabilityPolicy.whyUnavailable(slots, window, date.atTime(requested),
                                 LocalDateTime.ofInstant(clock.instant(), settings.zone()))));
+    }
+
+    /** Las otras reservas activas de ese vehiculo en el dia, como franjas ocupadas. */
+    private List<Occupancy> vehicleBookingsOf(LocalDate date, long vehicleId, long excludeBookingId) {
+        return bookings.findOccupying(toInstant(date.atStartOfDay()), toInstant(date.plusDays(1).atStartOfDay()))
+                .stream()
+                .filter(other -> other.id() != excludeBookingId && other.customerVehicleId() == vehicleId)
+                .map(other -> new Occupancy(other.serviceBayId() == null ? (short) 0 : other.serviceBayId(),
+                        toLocal(other.scheduledStart()), toLocal(other.scheduledEnd())))
+                .toList();
     }
 
     /** Un vehiculo no puede estar en dos reservas activas que se crucen (no puede estar en dos bahias). */
