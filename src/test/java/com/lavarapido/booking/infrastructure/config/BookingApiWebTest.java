@@ -271,6 +271,24 @@ class BookingApiWebTest {
     }
 
     @Test
+    void anInvalidDayInTheWeekIsAValidationError() throws Exception {
+        // la lista se valida elemento por elemento: un dia 9 o sin "working" respondia 500
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"dayOfWeek\":9,\"working\":null,\"opensAt\":\"08:00\",\"closesAt\":\"18:00\"}]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        org.mockito.Mockito.verifyNoInteractions(schedule);
+    }
+
+    @Test
     void theCustomerCancelSendsTheChosenReason() throws Exception {
         // A-20: antes el controlador descartaba reasonCode y siempre mandaba null
         given(bookings.cancel(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq("SCHEDULE_CONFLICT"), any()))
