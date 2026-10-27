@@ -197,7 +197,9 @@ class BookingApiWebTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.paymentMode").value("DIGITAL"))
                 .andExpect(jsonPath("$.paymentDeadline").value("2026-10-26T15:30:00Z"))
-                .andExpect(jsonPath("$.paymentReported").value(false));
+                .andExpect(jsonPath("$.paymentReported").value(false))
+                // el cliente no ve el id de quien creo la reserva (un administrador)
+                .andExpect(jsonPath("$.bookedBy").doesNotExist());
         org.junit.jupiter.api.Assertions.assertEquals("DIGITAL", request.getValue().paymentMode());
 
         // una reserva de antes del cambio: sin modo ni plazo
@@ -212,7 +214,8 @@ class BookingApiWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].paymentMode").doesNotExist())
                 .andExpect(jsonPath("$[0].paymentDeadline").doesNotExist())
-                .andExpect(jsonPath("$[0].paymentReported").value(false));
+                .andExpect(jsonPath("$[0].paymentReported").value(false))
+                .andExpect(jsonPath("$[0].bookedBy").value(7));
     }
 
     @Test
