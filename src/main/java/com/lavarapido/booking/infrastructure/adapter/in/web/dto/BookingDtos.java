@@ -26,12 +26,15 @@ import java.util.List;
  */
 public final class BookingDtos {
 
+    /** Tope de servicios en una reserva: el catalogo tiene pocos y la lista va a un IN de SQL Server. */
+    static final int MAX_SERVICES = 10;
+
     private BookingDtos() {
     }
 
     public record CreateBookingRequest(
             @NotNull Long vehicleId,
-            @NotEmpty List<Integer> serviceIds,
+            @NotEmpty @Size(max = MAX_SERVICES) List<@NotNull @Positive Integer> serviceIds,
             @NotNull LocalDate date,
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
             @Size(max = 300) String notes,
@@ -51,7 +54,7 @@ public final class BookingDtos {
      * cliente recibe 409 BOOKING_SERVICES_LOCKED (BIZ-01).
      */
     public record RescheduleRequest(
-            List<Integer> serviceIds,
+            @Size(max = MAX_SERVICES) List<@NotNull @Positive Integer> serviceIds,
             @NotNull LocalDate date,
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
             @Size(max = 300) String notes) {

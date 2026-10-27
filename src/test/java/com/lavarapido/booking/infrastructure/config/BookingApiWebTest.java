@@ -247,6 +247,48 @@ class BookingApiWebTest {
     }
 
     @Test
+    void nullOrTooManyServicesAreValidationErrors() throws Exception {
+        // [null] llegaba al caso de uso y respondia 500; una lista sin tope rompia el IN de SQL Server
+        mvc.perform(post("/api/v1/bookings")
+                        .header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleId\":5,\"serviceIds\":[null],\"date\":\"2026-11-02\",\"time\":\"09:00\",\"paymentMode\":\"CASH\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(post("/api/v1/bookings")
+                        .header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleId\":5,\"serviceIds\":[1,2,3,4,5,6,7,8,9,10,11],\"date\":\"2026-11-02\",\"time\":\"09:00\",\"paymentMode\":\"CASH\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/bookings/9")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"serviceIds\":[null],\"date\":\"2026-11-02\",\"time\":\"09:00\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        org.mockito.Mockito.verifyNoInteractions(bookings);
+    }
+
+    @Test
+    void anInvalidDayInTheWeekIsAValidationError() throws Exception {
+        // la lista se valida elemento por elemento: un dia 9 o sin "working" respondia 500
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"dayOfWeek\":9,\"working\":null,\"opensAt\":\"08:00\",\"closesAt\":\"18:00\"}]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        org.mockito.Mockito.verifyNoInteractions(schedule);
+    }
+
+    @Test
     void theCustomerCancelSendsTheChosenReason() throws Exception {
         // A-20: antes el controlador descartaba reasonCode y siempre mandaba null
         given(bookings.cancel(org.mockito.ArgumentMatchers.eq(7L), org.mockito.ArgumentMatchers.eq("SCHEDULE_CONFLICT"), any()))
