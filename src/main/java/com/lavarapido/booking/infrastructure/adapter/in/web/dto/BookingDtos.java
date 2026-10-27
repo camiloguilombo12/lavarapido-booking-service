@@ -26,12 +26,15 @@ import java.util.List;
  */
 public final class BookingDtos {
 
+    /** Tope de servicios en una reserva: el catalogo tiene pocos y la lista va a un IN de SQL Server. */
+    static final int MAX_SERVICES = 10;
+
     private BookingDtos() {
     }
 
     public record CreateBookingRequest(
             @NotNull Long vehicleId,
-            @NotEmpty List<Integer> serviceIds,
+            @NotEmpty @Size(max = MAX_SERVICES) List<@NotNull @Positive Integer> serviceIds,
             @NotNull LocalDate date,
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
             @Size(max = 300) String notes,
@@ -51,7 +54,7 @@ public final class BookingDtos {
      * cliente recibe 409 BOOKING_SERVICES_LOCKED (BIZ-01).
      */
     public record RescheduleRequest(
-            List<Integer> serviceIds,
+            @Size(max = MAX_SERVICES) List<@NotNull @Positive Integer> serviceIds,
             @NotNull LocalDate date,
             @NotNull @JsonFormat(pattern = "HH:mm") LocalTime time,
             @Size(max = 300) String notes) {
@@ -130,7 +133,8 @@ public final class BookingDtos {
             ScheduleDtos.BayResponse bay,
             VehicleResponse vehicle,
             Long ownerUserId,
-            long bookedBy,
+            // solo en las vistas del personal: al cliente no le sirve el id de quien la creo
+            Long bookedBy,
             List<LineResponse> services,
             BigDecimal subtotal,
             BigDecimal pointsDiscountAmount,
@@ -159,7 +163,7 @@ public final class BookingDtos {
                     ScheduleDtos.BayResponse.from(view.bay()),
                     VehicleResponse.from(view.vehicle()),
                     includeOwner && view.vehicle() != null ? view.vehicle().ownerUserId() : null,
-                    booking.bookedBy(),
+                    includeOwner ? booking.bookedBy() : null,
                     booking.lines().stream().map(LineResponse::from).toList(),
                     booking.subtotal(),
                     booking.pointsDiscountAmount(),

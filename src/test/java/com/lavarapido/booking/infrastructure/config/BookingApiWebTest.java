@@ -197,7 +197,9 @@ class BookingApiWebTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.paymentMode").value("DIGITAL"))
                 .andExpect(jsonPath("$.paymentDeadline").value("2026-10-26T15:30:00Z"))
-                .andExpect(jsonPath("$.paymentReported").value(false));
+                .andExpect(jsonPath("$.paymentReported").value(false))
+                // el cliente no ve el id de quien creo la reserva (un administrador)
+                .andExpect(jsonPath("$.bookedBy").doesNotExist());
         org.junit.jupiter.api.Assertions.assertEquals("DIGITAL", request.getValue().paymentMode());
 
         // una reserva de antes del cambio: sin modo ni plazo
@@ -212,7 +214,8 @@ class BookingApiWebTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].paymentMode").doesNotExist())
                 .andExpect(jsonPath("$[0].paymentDeadline").doesNotExist())
-                .andExpect(jsonPath("$[0].paymentReported").value(false));
+                .andExpect(jsonPath("$[0].paymentReported").value(false))
+                .andExpect(jsonPath("$[0].bookedBy").value(7));
     }
 
     @Test
@@ -244,6 +247,48 @@ class BookingApiWebTest {
                         .content("{\"serviceIds\":[]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void nullOrTooManyServicesAreValidationErrors() throws Exception {
+        // [null] llegaba al caso de uso y respondia 500; una lista sin tope rompia el IN de SQL Server
+        mvc.perform(post("/api/v1/bookings")
+                        .header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleId\":5,\"serviceIds\":[null],\"date\":\"2026-11-02\",\"time\":\"09:00\",\"paymentMode\":\"CASH\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(post("/api/v1/bookings")
+                        .header("Authorization", token(7L, "CLIENT"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleId\":5,\"serviceIds\":[1,2,3,4,5,6,7,8,9,10,11],\"date\":\"2026-11-02\",\"time\":\"09:00\",\"paymentMode\":\"CASH\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/bookings/9")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"serviceIds\":[null],\"date\":\"2026-11-02\",\"time\":\"09:00\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        org.mockito.Mockito.verifyNoInteractions(bookings);
+    }
+
+    @Test
+    void anInvalidDayInTheWeekIsAValidationError() throws Exception {
+        // la lista se valida elemento por elemento: un dia 9 o sin "working" respondia 500
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"dayOfWeek\":9,\"working\":null,\"opensAt\":\"08:00\",\"closesAt\":\"18:00\"}]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/admin/schedule/business-hours")
+                        .header("Authorization", token(1L, "ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        org.mockito.Mockito.verifyNoInteractions(schedule);
     }
 
     @Test

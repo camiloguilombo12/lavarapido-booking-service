@@ -7,6 +7,8 @@ import com.lavarapido.booking.domain.exception.ForbiddenException;
 import com.lavarapido.booking.domain.exception.NotFoundException;
 import com.lavarapido.booking.domain.exception.ScheduleConflictException;
 import com.lavarapido.booking.domain.exception.SlotUnavailableException;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -114,6 +116,21 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     ProblemDetail handleDataError(DataAccessException exception) {
         log.error("Database error", exception);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected error occurred");
+    }
+
+    /**
+     * Las listas del cuerpo (la semana del horario) se validan elemento por elemento con la
+     * validacion de metodo del controlador: un dato invalido es 400, no un error inesperado.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    ProblemDetail handleConstraintViolation(ConstraintViolationException exception) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : exception.getConstraintViolations()) {
+            errors.putIfAbsent(violation.getPropertyPath().toString(), violation.getMessage());
+        }
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "The request has invalid fields");
+        problem.setProperty("errors", errors);
+        return problem;
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

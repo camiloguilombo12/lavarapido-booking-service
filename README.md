@@ -169,7 +169,7 @@ desde cero (es una base de desarrollo).
 .\mvnw.cmd spring-boot:run
 ```
 
-Puerto `3003`. Pruebas: `./mvnw test`, 95 al 24-10-2026 con todas las ramas del 23-10 fusionadas,
+Puerto `3003`. Pruebas: `./mvnw test`, 137 al 27-10-2026 (rama develop),
 sin base de datos.
 
 | Variable | Para qué |

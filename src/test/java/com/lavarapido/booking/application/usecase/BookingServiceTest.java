@@ -152,6 +152,29 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("RF-006: las alternativas no proponen horas en que ese vehículo ya tiene otra reserva")
+    void alternativesRespectTheOtherBookingsOfTheVehicle() {
+        given(bays.findAll()).willReturn(List.of(new ServiceBay((short) 1, "BAY-01", "Bahia 1", BayStatus.ACTIVE),
+                new ServiceBay((short) 2, "BAY-02", "Bahia 2", BayStatus.ACTIVE)));
+        Booking otherCarBay1 = existing(1L, 6L, "2026-10-01T14:00:00Z");
+        Booking otherCarBay2 = Booking.restore(2L, 7L, (short) 2, Instant.parse("2026-10-01T14:00:00Z"),
+                Instant.parse("2026-10-01T15:15:00Z"), BookingStatus.CONFIRMED, 8L, null, 0, BigDecimal.ZERO, null,
+                List.of(), NOW);
+        // el mismo carro ya esta reservado de 10:30 a 11:45 en la bahia 2
+        Booking myCarLater = Booking.restore(3L, 5L, (short) 2, Instant.parse("2026-10-01T15:30:00Z"),
+                Instant.parse("2026-10-01T16:45:00Z"), BookingStatus.CONFIRMED, 7L, null, 0, BigDecimal.ZERO, null,
+                List.of(), NOW);
+        given(bookings.findOccupying(any(), any())).willReturn(List.of(otherCarBay1, otherCarBay2, myCarLater));
+
+        SlotUnavailableException error = assertThrows(SlotUnavailableException.class,
+                () -> service.create(at("09:00"), CLIENT));
+
+        // a las 10:30 hay bahia 1 libre, pero el carro no puede estar en dos reservas: la primera es 12:00
+        assertEquals(LocalTime.of(12, 0), error.alternatives().getFirst());
+        verify(bookings, never()).save(any(), anyLong());
+    }
+
+    @Test
     @DisplayName("RF-006: una hora antes de abrir dice que está fuera del horario, no que no hay bahía")
     void timeBeforeOpeningIsOutsideHours() {
         SlotUnavailableException error = assertThrows(SlotUnavailableException.class,
