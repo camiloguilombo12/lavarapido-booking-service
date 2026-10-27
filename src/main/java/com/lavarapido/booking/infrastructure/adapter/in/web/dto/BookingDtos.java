@@ -133,7 +133,8 @@ public final class BookingDtos {
             ScheduleDtos.BayResponse bay,
             VehicleResponse vehicle,
             Long ownerUserId,
-            long bookedBy,
+            // solo en las vistas del personal: al cliente no le sirve el id de quien la creo
+            Long bookedBy,
             List<LineResponse> services,
             BigDecimal subtotal,
             BigDecimal pointsDiscountAmount,
@@ -162,7 +163,7 @@ public final class BookingDtos {
                     ScheduleDtos.BayResponse.from(view.bay()),
                     VehicleResponse.from(view.vehicle()),
                     includeOwner && view.vehicle() != null ? view.vehicle().ownerUserId() : null,
-                    booking.bookedBy(),
+                    includeOwner ? booking.bookedBy() : null,
                     booking.lines().stream().map(LineResponse::from).toList(),
                     booking.subtotal(),
                     booking.pointsDiscountAmount(),
